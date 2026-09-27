@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { validateSessionId, resolveDataRoot, normalizeCwd, projectKey, sessionFile, archivedTaskFile, assertInside, diagnosticsFile, projectPreferencesFile } from '../../scripts/common/paths.mjs';
+import { validateSessionId, resolveDataRoot, normalizeCwd, projectKey, sessionFile, archivedTaskFile, assertInside, diagnosticsFile, projectPreferencesFile, dataPaths, lockDirFor } from '../../scripts/common/paths.mjs';
 
 test('accepts realistic session ids and rejects traversal or odd characters', () => {
   for (const ok of ['abc', '77614389-3dec-44de-9fb6-1c672d238d8c', 'A_b-9', 'x'.repeat(128)]) assert.equal(validateSessionId(ok), ok);
@@ -35,4 +35,17 @@ test('every data path stays inside the root', () => {
   assert.throws(() => assertInside(root, path.join(root, '..', 'escape.json')), /PATH_ESCAPE|escapes/);
   assert.throws(() => assertInside(root, root), /PATH_ESCAPE|escapes/);
   assert.throws(() => archivedTaskFile(root, 'abc', '../evil'), /INVALID_TASK_ID|task id/);
+});
+
+test('dataPaths and lockDirFor point inside the root', () => {
+  const root = path.join(path.sep, 'tmp', 'adhd-root');
+  const paths = dataPaths(root);
+  assert.equal(paths.root, root);
+  assert.equal(paths.preferences, path.join(root, 'preferences.json'));
+  assert.equal(paths.projects, path.join(root, 'projects'));
+  assert.equal(paths.sessions, path.join(root, 'sessions'));
+  assert.equal(paths.exports, path.join(root, 'exports'));
+  assert.equal(paths.diagnostics, path.join(root, 'diagnostics'));
+  assert.equal(lockDirFor(root, 'abc'), path.join(root, 'sessions', 'abc.lock'));
+  assert.throws(() => lockDirFor(root, '../x'), /INVALID_SESSION_ID|session id/);
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { tmpDataRoot } from '../helpers.mjs';
-import { writeFileAtomic, readJsonFile, quarantine, appendLine, listFiles, fileExists } from '../../scripts/common/fsx.mjs';
+import { writeFileAtomic, readJsonFile, quarantine, appendLine, listFiles, fileExists, ensureDir, removeQuietly } from '../../scripts/common/fsx.mjs';
 
 test('writeFileAtomic creates parent dirs, leaves no temp file, and replaces content', () => {
   const root = tmpDataRoot();
@@ -12,7 +12,10 @@ test('writeFileAtomic creates parent dirs, leaves no temp file, and replaces con
   writeFileAtomic(file, '{"v":2}');
   assert.deepEqual(readJsonFile(file), { status: 'ok', value: { v: 2 } });
   assert.deepEqual(listFiles(path.join(root, 'sessions')), ['a.json']);
-  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(path.join(root, 'sessions')).mode & 0o777, 0o700);
+  }
 });
 
 test('readJsonFile distinguishes missing from corrupt', () => {
@@ -41,4 +44,18 @@ test('appendLine flattens newlines so JSONL stays one record per line', () => {
   appendLine(file, 'one\ntwo');
   appendLine(file, 'three');
   assert.deepEqual(fs.readFileSync(file, 'utf8').split('\n').filter(Boolean), ['one two', 'three']);
+});
+
+test('ensureDir creates nested directories with mode 0o700 and removeQuietly removes them', () => {
+  const root = tmpDataRoot();
+  const dir = path.join(root, 'a', 'b', 'c');
+  ensureDir(dir);
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(path.join(root, 'a')).mode & 0o777, 0o700);
+    assert.equal(fs.statSync(path.join(root, 'a', 'b')).mode & 0o777, 0o700);
+    assert.equal(fs.statSync(path.join(root, 'a', 'b', 'c')).mode & 0o777, 0o700);
+  }
+  assert.equal(removeQuietly(path.join(root, 'a')), true);
+  assert.equal(fileExists(path.join(root, 'a')), false);
+  assert.equal(removeQuietly(path.join(root, 'a')), true);
 });
