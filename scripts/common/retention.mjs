@@ -14,7 +14,12 @@ export function cleanupExpired(root, { now = Date.now() } = {}) {
   for (const name of listFiles(paths.sessions)) {
     const full = path.join(paths.sessions, name);
     if (name.endsWith('.json')) {
-      const loaded = readJsonFile(full);
+      let loaded;
+      try {
+        loaded = readJsonFile(full);
+      } catch {
+        continue;
+      }
       if (loaded.status !== 'ok' || !loaded.value || typeof loaded.value !== 'object') continue;
       const record = loaded.value;
       const archived = name.split('.').length > 2;

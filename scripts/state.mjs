@@ -71,7 +71,15 @@ function dirEntries(dir) {
 
 function dataShow(root) {
   const paths = dataPaths(root);
-  const sessions = listSessionRecords(root).map(({ file, record, archived }) => ({ file, sessionId: record.sessionId, taskId: record.taskId, phase: record.phase, mode: record.mode, cwd: record.cwd, updatedAt: record.updatedAt, expiresAt: record.expiresAt, bytes: fs.statSync(file).size, archived }));
+  const sessions = listSessionRecords(root).flatMap(({ file, record, archived }) => {
+    let bytes;
+    try {
+      bytes = fs.statSync(file).size;
+    } catch {
+      return [];
+    }
+    return [{ file, sessionId: record.sessionId, taskId: record.taskId, phase: record.phase, mode: record.mode, cwd: record.cwd, updatedAt: record.updatedAt, expiresAt: record.expiresAt, bytes, archived }];
+  });
   const diagnostics = dirEntries(paths.diagnostics);
   const exportsList = dirEntries(paths.exports);
   const projects = listFiles(paths.projects).map((key) => ({ projectKey: key, file: path.join(paths.projects, key, 'preferences.json'), exists: fileExists(path.join(paths.projects, key, 'preferences.json')) }));
@@ -92,7 +100,13 @@ function dataExport(root, now) {
       projects: listFiles(paths.projects).map((key) => ({ projectKey: key, preferences: readJsonFile(path.join(paths.projects, key, 'preferences.json')).value ?? null })),
     },
     sessions: listSessionRecords(root).map((entry) => entry.record),
-    diagnostics: listFiles(paths.diagnostics).filter((name) => name.endsWith('.jsonl')).map((name) => ({ file: name, lines: fs.readFileSync(path.join(paths.diagnostics, name), 'utf8').split('\n').filter(Boolean) })),
+    diagnostics: listFiles(paths.diagnostics).filter((name) => name.endsWith('.jsonl')).flatMap((name) => {
+      try {
+        return [{ file: name, lines: fs.readFileSync(path.join(paths.diagnostics, name), 'utf8').split('\n').filter(Boolean) }];
+      } catch {
+        return [];
+      }
+    }),
   };
   writeFileAtomic(file, JSON.stringify(payload, null, 2));
   return { ok: true, file, sessions: payload.sessions.length };
@@ -170,6 +184,7 @@ const commands = {
       const evaluation = evaluateStop(record, { cwd: record.cwd, fileExists });
       return { result: { accepted: true, verdict: evaluation.pass ? 'PASS' : 'GAPS', gaps: evaluation.gaps, coverage: { passed: result.receipt.items.filter((item) => item.status === 'PASS').length, total: result.receipt.items.length }, recordedAt: result.receipt.recordedAt } };
     }, { now });
+    if (outcome.status === 'corrupt') fail('STATE_CORRUPT', `session state for ${sessionId} was unreadable and has been quarantined`);
     if (outcome.status !== 'ok') fail('NOT_FOUND', `no session state for ${sessionId}`);
     return outcome.result;
   },
@@ -197,6 +212,7 @@ const commands = {
       if (isOpenPhase(record.phase)) cancelTask(record, now);
       return { result: { ok: true, phase: record.phase } };
     }, { now });
+    if (outcome.status === 'corrupt') fail('STATE_CORRUPT', `session state for ${sessionId} was unreadable and has been quarantined`);
     if (outcome.status !== 'ok') fail('NOT_FOUND', `no session state for ${sessionId}`);
     return outcome.result;
   },
@@ -259,20 +275,20 @@ const commands = {
 };
 
 async function main() {
-  const { positional, flags } = parseArgs(process.argv.slice(2));
-  const command = positional[0];
-  const root = resolveDataRoot({ flag: flags.data });
-  const now = Date.now();
-  if (!command || !Object.prototype.hasOwnProperty.call(commands, command)) {
-    writeStdoutJson({ error: { code: 'USAGE', message: `usage: state.mjs <${Object.keys(commands).join('|')}> [--data <dir>] [--session <id> | --cwd <path>] [options]` } });
-    process.exitCode = 1;
-    return;
-  }
   try {
+    const { positional, flags } = parseArgs(process.argv.slice(2));
+    const command = positional[0];
+    const root = resolveDataRoot({ flag: flags.data });
+    const now = Date.now();
+    if (!command || !Object.prototype.hasOwnProperty.call(commands, command)) {
+      writeStdoutJson({ error: { code: 'USAGE', message: `usage: state.mjs <${Object.keys(commands).join('|')}> [--data <dir>] [--session <id> | --cwd <path>] [options]` } });
+      process.exitCode = 1;
+      return;
+    }
     writeStdoutJson(await commands[command]({ root, flags, positional, now }));
   } catch (error) {
-    const details = error.details && Array.isArray(error.details.errors) ? error.details.errors : undefined;
-    writeStdoutJson({ error: { code: error.code || 'ERROR', message: String(error.message).slice(0, 500), details } });
+    const details = error?.details && Array.isArray(error.details.errors) ? error.details.errors : undefined;
+    writeStdoutJson({ error: { code: error?.code || 'ERROR', message: String(error?.message).slice(0, 500), details } });
     process.exitCode = 1;
   }
 }

@@ -63,7 +63,12 @@ export function listSessionRecords(root) {
   for (const name of listFiles(dir)) {
     if (!name.endsWith('.json')) continue;
     const file = path.join(dir, name);
-    const result = readJsonFile(file);
+    let result;
+    try {
+      result = readJsonFile(file);
+    } catch {
+      continue;
+    }
     if (result.status === 'ok' && result.value && typeof result.value === 'object') out.push({ file, record: result.value, archived: name.split('.').length > 2 });
   }
   return out;

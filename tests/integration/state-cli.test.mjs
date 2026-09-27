@@ -127,3 +127,19 @@ test('data show/export/delete-session/delete-project/delete-all with confirmatio
   assert.deepEqual(fs.readdirSync(root), []);
   assert.equal(runState(root, 'gc').json.removedSessions, 0);
 });
+
+test('listing commands tolerate unreadable entries, and corrupt state is reported as STATE_CORRUPT', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  runHook('prompt', root, promptInput({ prompt: 'work', cwd }));
+  fs.mkdirSync(path.join(root, 'sessions', 'weird.json'));
+  const shown = runState(root, 'data', { args: ['show', '--cwd', cwd] });
+  assert.equal(shown.status, 0);
+  assert.equal(shown.json.sessions.length, 1);
+  assert.equal(runState(root, 'data', { args: ['export', '--cwd', cwd] }).status, 0);
+  assert.equal(runState(root, 'gc').status, 0);
+  assert.equal(runState(root, 'status', { args: ['--cwd', cwd] }).json.phase, 'ACTIVE');
+  fs.writeFileSync(path.join(root, 'sessions', 'sess-test-1.json'), '{corrupt');
+  const audit = runState(root, 'audit-record', { args: ['--session', 'sess-test-1'], input: { taskId: 'x' } });
+  assert.deepEqual([audit.status, audit.json.error.code], [1, 'STATE_CORRUPT']);
+});
