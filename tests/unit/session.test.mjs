@@ -130,3 +130,30 @@ test('tool event list is capped and drop count recorded; evidence digest ignores
   assert.equal(record.evidence.commands.length, 500);
   assert.equal(typeof computeEvidenceDigest(record), 'string');
 });
+
+test('receipts are rejected once the task is closed, and the record stays valid', () => {
+  const record = fresh();
+  cancelTask(record, now);
+  assert.equal(recordAuditReceipt(record, passingReceipt(record), now).reason, 'NO_ACTIVE_TASK');
+  assert.equal(validateSessionRecord(record).ok, true);
+});
+
+test('startTask clamps the repair budget and both startTask and setMode reject unknown modes', () => {
+  const high = startTask(newSessionRecord({ sessionId: 's', cwd: '/p', now }), { text: 'x', receivedAt: now, preferencesSnapshot: { repairCycles: 9 } });
+  const low = startTask(newSessionRecord({ sessionId: 's', cwd: '/p', now }), { text: 'x', receivedAt: now, preferencesSnapshot: { repairCycles: -3 } });
+  assert.deepEqual([high.repair.maximum, low.repair.maximum], [6, 0]);
+  assert.equal(validateSessionRecord(high).ok, true);
+  assert.throws(() => startTask(newSessionRecord({ sessionId: 's', cwd: '/p', now }), { text: 'x', receivedAt: now, mode: 'bogus' }), /INVALID_MODE|mode must be/);
+  assert.throws(() => setMode(fresh(), 'bogus', now), /INVALID_MODE|mode must be/);
+});
+
+test('cap violations throw before anything is recorded', () => {
+  const record = fresh();
+  const tooMany = Array.from({ length: 201 }, (_, i) => ({ path: `file-${i}.md` }));
+  assert.throws(() => declareArtifacts(record, tooMany, now), /TOO_MANY_ARTIFACTS|at most 200/);
+  assert.equal(record.evidence.artifacts.length, 0);
+  const source = { url: 'https://a.gov/x', title: 'A', publisher: 'Agency', publicationDate: '2026-01-01', accessedAt: '2026-09-27T00:00:00Z', sourceType: 'primary', evidenceChainId: 'a', relation: 'supports' };
+  const claims = Array.from({ length: 301 }, (_, i) => ({ claimId: `c${i}`, text: 't', class: 'background', stability: 'stable', controversy: 'undisputed', confidence: 'low', rationale: 'r', sources: [source] }));
+  assert.throws(() => addResearchEvidence(record, { claims }), /LEDGER_TOO_LARGE|exceeds limits/);
+  assert.deepEqual([record.evidence.claims.length, record.evidence.sources.length], [0, 0]);
+});

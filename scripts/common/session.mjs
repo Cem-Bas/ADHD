@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { randomTaskId, randomNonce, digestOf } from './ids.mjs';
-import { emptyEvidence, MAX_TOOL_EVENTS } from './schema.mjs';
+import { emptyEvidence, MAX_TOOL_EVENTS, MAX_REPAIRS, MODES, isOpenPhase } from './schema.mjs';
 import { transition } from './statemachine.mjs';
 import { MUTATING_TOOLS } from './evidence.mjs';
 import { validateClaim, validateUnresolved, assessLedger } from './ledger.mjs';
@@ -36,12 +36,14 @@ export function startTask(record, { text, receivedAt, mode = 'standard', transcr
   if (transcriptPath) record.transcriptPath = transcriptPath;
   record.taskId = randomTaskId();
   record.contractVersion = 1;
+  if (!MODES.includes(mode)) throw new AdhdError('INVALID_MODE', `mode must be one of ${MODES.join(', ')}`);
   record.mode = mode;
   record.originalRequest = { text, receivedAt: iso(receivedAt) };
   record.userTurns = [];
   record.evidence = emptyEvidence();
   record.audit = { nonce: randomNonce(), receipt: null, invalidatedAt: null, requestedAt: null };
-  const maximum = Number.isInteger(record.preferencesSnapshot.repairCycles) ? record.preferencesSnapshot.repairCycles : 6;
+  const requested = record.preferencesSnapshot && Number.isInteger(record.preferencesSnapshot.repairCycles) ? record.preferencesSnapshot.repairCycles : MAX_REPAIRS;
+  const maximum = Math.min(Math.max(0, requested), MAX_REPAIRS);
   record.repair = { completed: 0, maximum, gaps: [], blocksIssued: 0 };
   record.closure = null;
   record.phase = 'IDLE';
@@ -68,6 +70,7 @@ export function appendUserTurn(record, { text, receivedAt }) {
 }
 
 export function setMode(record, mode, at) {
+  if (!MODES.includes(mode)) throw new AdhdError('INVALID_MODE', `mode must be one of ${MODES.join(', ')}`);
   if (record.mode === mode) return record;
   record.mode = mode;
   if (record.taskId) {
@@ -121,12 +124,16 @@ export function declareArtifacts(record, artifacts, at) {
   if (!Array.isArray(artifacts)) throw new AdhdError('INVALID_ARTIFACT', 'artifacts must be an array');
   for (const artifact of artifacts) {
     if (!artifact || typeof artifact.path !== 'string' || artifact.path.trim() === '') throw new AdhdError('INVALID_ARTIFACT', 'artifact.path must be a non-empty string');
+  }
+  const existing = new Set(record.evidence.artifacts.map((item) => item.path));
+  const incoming = new Set(artifacts.map((artifact) => artifact.path).filter((path) => !existing.has(path)));
+  if (existing.size + incoming.size > MAX_ARTIFACTS) throw new AdhdError('TOO_MANY_ARTIFACTS', `at most ${MAX_ARTIFACTS} declared artifacts`);
+  for (const artifact of artifacts) {
     const entry = { path: artifact.path, purpose: typeof artifact.purpose === 'string' ? artifact.purpose.slice(0, 300) : '', declaredAt: iso(at) };
-    const existing = record.evidence.artifacts.find((item) => item.path === artifact.path);
-    if (existing) Object.assign(existing, entry);
+    const current = record.evidence.artifacts.find((item) => item.path === artifact.path);
+    if (current) Object.assign(current, entry);
     else record.evidence.artifacts.push(entry);
   }
-  if (record.evidence.artifacts.length > MAX_ARTIFACTS) throw new AdhdError('TOO_MANY_ARTIFACTS', `at most ${MAX_ARTIFACTS} declared artifacts`);
   return record;
 }
 
@@ -136,6 +143,12 @@ export function addResearchEvidence(record, { claims = [], sources = [], unresol
   claims.forEach((claim, i) => { const result = validateClaim(claim); if (!result.ok) errors.push(`claims[${i}]: ${result.errors.join('; ')}`); });
   unresolved.forEach((item, i) => { const result = validateUnresolved(item); if (!result.ok) errors.push(`unresolved[${i}]: ${result.errors.join('; ')}`); });
   if (errors.length > 0) throw new AdhdError('INVALID_EVIDENCE', errors.join(' | '), { errors });
+  const knownClaims = new Set(record.evidence.claims.map((item) => item.claimId));
+  const newClaimIds = new Set(claims.map((claim) => claim.claimId).filter((id) => !knownClaims.has(id)));
+  const knownSources = new Set(record.evidence.sources.map((item) => item.url));
+  const incomingSources = [...sources, ...claims.flatMap((claim) => claim.sources)].filter((source) => source && typeof source.url === 'string');
+  const newSourceUrls = new Set(incomingSources.map((source) => source.url).filter((url) => !knownSources.has(url)));
+  if (knownClaims.size + newClaimIds.size > MAX_CLAIMS || knownSources.size + newSourceUrls.size > MAX_SOURCES) throw new AdhdError('LEDGER_TOO_LARGE', `claim ledger exceeds limits (${MAX_CLAIMS} claims, ${MAX_SOURCES} sources)`);
   for (const claim of claims) {
     const index = record.evidence.claims.findIndex((item) => item.claimId === claim.claimId);
     if (index === -1) record.evidence.claims.push(claim);
@@ -146,12 +159,10 @@ export function addResearchEvidence(record, { claims = [], sources = [], unresol
     if (index === -1) record.evidence.unresolved.push(item);
     else record.evidence.unresolved[index] = item;
   }
-  for (const source of [...sources, ...claims.flatMap((claim) => claim.sources)]) {
-    if (!source || typeof source.url !== 'string') continue;
+  for (const source of incomingSources) {
     if (record.evidence.sources.some((existing) => existing.url === source.url)) continue;
     record.evidence.sources.push({ url: source.url, title: source.title, publisher: source.publisher, publicationDate: source.publicationDate ?? null, accessedAt: source.accessedAt, sourceType: source.sourceType, evidenceChainId: source.evidenceChainId });
   }
-  if (record.evidence.claims.length > MAX_CLAIMS || record.evidence.sources.length > MAX_SOURCES) throw new AdhdError('LEDGER_TOO_LARGE', `claim ledger exceeds limits (${MAX_CLAIMS} claims, ${MAX_SOURCES} sources)`);
   if (record.audit.receipt && record.audit.invalidatedAt === null) record.audit.invalidatedAt = new Date().toISOString();
   return record;
 }
@@ -189,7 +200,7 @@ export function validateReceipt(receipt) {
 export function recordAuditReceipt(record, receipt, now) {
   const checked = validateReceipt(receipt);
   if (!checked.ok) return { ok: false, reason: 'INVALID_RECEIPT', errors: checked.errors };
-  if (!record.taskId || record.phase === 'IDLE') return { ok: false, reason: 'NO_ACTIVE_TASK' };
+  if (!record.taskId || !isOpenPhase(record.phase)) return { ok: false, reason: 'NO_ACTIVE_TASK' };
   if (receipt.taskId !== record.taskId) return { ok: false, reason: 'TASK_MISMATCH' };
   if (receipt.nonce !== record.audit.nonce) return { ok: false, reason: 'NONCE_MISMATCH' };
   if (receipt.contractVersion !== record.contractVersion) return { ok: false, reason: 'CONTRACT_VERSION_MISMATCH' };
