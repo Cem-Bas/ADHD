@@ -9,11 +9,12 @@ export function pluginRootFromScript(importMetaUrl) {
 }
 
 export async function runHook({ name, importMetaUrl, argv = process.argv.slice(2), handler }) {
-  const { flags } = parseArgs(argv);
-  const dataRoot = resolveDataRoot({ flag: flags.data });
-  const pluginRoot = pluginRootFromScript(importMetaUrl);
+  let dataRoot = null;
   let sessionId = null;
   try {
+    const { flags } = parseArgs(argv);
+    dataRoot = resolveDataRoot({ flag: flags.data });
+    const pluginRoot = pluginRootFromScript(importMetaUrl);
     const parsed = parseJson(await readStdin());
     if (!parsed.ok || !parsed.value || typeof parsed.value !== 'object' || Array.isArray(parsed.value)) {
       appendDiagnostic(dataRoot, 'unattributed', { code: 'MALFORMED_HOOK_INPUT', message: `${name}: ${parsed.ok ? 'input is not a JSON object' : parsed.error}` });
@@ -29,7 +30,13 @@ export async function runHook({ name, importMetaUrl, argv = process.argv.slice(2
     const output = await handler({ input, sessionId, dataRoot, pluginRoot, now: Date.now() });
     if (output) writeStdoutJson(output);
   } catch (error) {
-    appendDiagnostic(dataRoot, sessionId || 'unattributed', { code: error.code || 'HOOK_EXCEPTION', message: `${name}: ${error.message}` });
-    stderrLine(`ADHD ${name} hook: ${error.code || 'error'} — ${String(error.message).slice(0, 200)}`);
+    if (dataRoot) {
+      try {
+        appendDiagnostic(dataRoot, sessionId || 'unattributed', { code: error.code || 'HOOK_EXCEPTION', message: `${name}: ${error.message}` });
+      } catch {
+        // diagnostics are best effort
+      }
+    }
+    stderrLine(`ADHD ${name} hook: ${error.code || 'error'} — ${String(error && error.message).slice(0, 200)}`);
   }
 }

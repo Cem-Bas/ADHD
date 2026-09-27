@@ -14,14 +14,14 @@ export function validateSessionId(id) {
   return id;
 }
 
-export function resolveDataRoot({ flag, env = process.env, home = os.homedir() } = {}) {
+export function resolveDataRoot({ flag, env = process.env, home } = {}) {
   for (const candidate of [flag, env.CLAUDE_PLUGIN_DATA]) {
     if (typeof candidate !== 'string') continue;
     const trimmed = candidate.trim();
     if (trimmed === '' || PLACEHOLDER_RE.test(trimmed)) continue;
     return path.resolve(trimmed);
   }
-  return path.join(home, '.claude', 'plugins', 'data', 'adhd-local');
+  return path.join(home ?? os.homedir(), '.claude', 'plugins', 'data', 'adhd-local');
 }
 
 export function normalizeCwd(cwd) {

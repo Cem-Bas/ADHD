@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { tmpDataRoot, tmpProjectDir, runHook, promptInput, readSession, sessionFilePath } from '../helpers.mjs';
+import { tmpDataRoot, tmpProjectDir, runHook, promptInput, readSession, sessionFilePath, runScript, SCRIPTS } from '../helpers.mjs';
 
 const ctx = (text) => text.hookSpecificOutput.additionalContext;
 
@@ -166,4 +166,12 @@ test('a prompt beyond the 2 MiB record cap degrades verification instead of corr
   const first = runHook('prompt', fresh, promptInput({ prompt: 'y'.repeat(2 * 1024 * 1024 + 10) }));
   assert.ok(ctx(first.json).includes('ADHD DEGRADED STOP REPORT'));
   assert.equal(readSession(fresh, 'sess-test-1').phase, 'DEGRADED_REPORT_REQUIRED');
+});
+
+test('the hook works with no HOME in the environment when --data is given', () => {
+  const root = tmpDataRoot();
+  const result = runScript(SCRIPTS.prompt, { input: promptInput({ prompt: 'no home' }), args: ['--data', root], env: { HOME: '', USERPROFILE: '' } });
+  assert.equal(result.status, 0);
+  assert.ok(ctx(result.json).includes('TASK LOCK'));
+  assert.equal(readSession(root, 'sess-test-1').originalRequest.text, 'no home');
 });
