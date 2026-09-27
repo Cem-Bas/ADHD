@@ -110,3 +110,14 @@ test('control contexts give Claude the exact commands and confirmation rules', (
   const noTask = renderControlContext({ command: 'cancel', args: '', record, ...ctx, hasTask: false });
   assert.ok(noTask.includes('No active'));
 });
+
+test('ledger rendering stays bounded for long conversations and keeps the latest turns', () => {
+  const record = make('short');
+  for (let i = 0; i < 100; i += 1) appendUserTurn(record, { text: `turn${i} ${'t'.repeat(3000)}`, receivedAt: now + i });
+  const ledger = renderLedger(record);
+  assert.ok(ledger.length < 14000, String(ledger.length));
+  assert.ok(ledger.includes('turn99'));
+  assert.ok(ledger.includes('turn88'));
+  assert.equal(ledger.includes('turn87 '), false);
+  assert.ok(ledger.includes('turns 1–88 are omitted'));
+});

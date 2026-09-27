@@ -8,6 +8,8 @@ export const BOUNDED_REPORT_SECTIONS = ['Unresolved items', 'Evidence gathered',
 export const DEGRADED_REPORT_HEADING = 'ADHD DEGRADED STOP REPORT';
 export const DEGRADED_REPORT_SECTIONS = ['Verification failure', 'Work completed without verification', 'Smallest next action'];
 const LEDGER_CHAR_BUDGET = 12000;
+const MAX_RENDERED_TURNS = 12;
+const MIN_TURN_BUDGET = 200;
 
 function quote(value) {
   return `"${String(value).replace(/(["\\$`])/g, '\\$1')}"`;
@@ -36,13 +38,19 @@ function clip(text, budget) {
   return `${text.slice(0, budget)}\n[… clipped ${text.length - budget} more characters; the full verbatim text is in the session state file]`;
 }
 
-export function renderLedger(record, { maxChars = LEDGER_CHAR_BUDGET } = {}) {
+export function renderLedger(record, { maxChars = LEDGER_CHAR_BUDGET, maxTurns = MAX_RENDERED_TURNS } = {}) {
   const turns = record.userTurns;
-  const budget = Math.max(400, Math.floor(maxChars / (1 + turns.length)));
-  const lines = ['Original request (verbatim):', fence(clip(record.originalRequest ? record.originalRequest.text : '', budget))];
+  const shown = turns.slice(-maxTurns);
+  const omitted = turns.length - shown.length;
+  const originalText = record.originalRequest ? record.originalRequest.text : '';
+  const originalBudget = Math.max(400, Math.floor(maxChars * 0.4));
+  const remaining = Math.max(0, maxChars - Math.min(originalText.length, originalBudget));
+  const turnBudget = Math.max(MIN_TURN_BUDGET, Math.floor(remaining / Math.max(1, shown.length)));
+  const lines = ['Original request (verbatim):', fence(clip(originalText, originalBudget))];
   if (turns.length > 0) {
     lines.push('Later user turns (ordered, verbatim; a later explicit correction overrides an earlier conflicting instruction):');
-    for (const turn of turns) lines.push(`${turn.sequence}. [${turn.receivedAt}]`, fence(clip(turn.text, budget)));
+    if (omitted > 0) lines.push(`[turns 1–${omitted} are omitted from this view to stay within the context budget; they remain verbatim in the session state file and still bind this task]`);
+    for (const turn of shown) lines.push(`${turn.sequence}. [${turn.receivedAt}]`, fence(clip(turn.text, turnBudget)));
   }
   return lines.join('\n');
 }
