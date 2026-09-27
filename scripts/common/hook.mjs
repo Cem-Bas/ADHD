@@ -37,6 +37,6 @@ export async function runHook({ name, importMetaUrl, argv = process.argv.slice(2
         // diagnostics are best effort
       }
     }
-    stderrLine(`ADHD ${name} hook: ${error.code || 'error'} — ${String(error && error.message).slice(0, 200)}`);
+    stderrLine(`ADHD ${name} hook: ${error?.code || 'error'} — ${String(error?.message).slice(0, 200)}`);
   }
 }
