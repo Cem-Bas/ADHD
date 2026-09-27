@@ -7,6 +7,11 @@ export const MODES = ['standard', 'hyperfocus'];
 export const MAX_SESSION_BYTES = 2 * 1024 * 1024;
 export const MAX_TOOL_RESULT_BYTES = 128 * 1024;
 export const MAX_TOOL_EVENTS = 500;
+export const MAX_REPAIRS = 6;
+export const MAX_CONSECUTIVE_BLOCKS = 7;
+export const CLOSURE_REASONS = ['complete', 'bounded', 'degraded', 'cancelled', 'replaced', 'cleared'];
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
+const NONCE_RE = /^[0-9a-f]{32}$/;
 
 const TOP_LEVEL_KEYS = ['schemaVersion', 'sessionId', 'taskId', 'contractVersion', 'requestDigest', 'cwd', 'transcriptPath', 'phase', 'mode', 'originalRequest', 'userTurns', 'preferencesSnapshot', 'evidence', 'audit', 'repair', 'closure', 'createdAt', 'updatedAt', 'expiresAt', 'extensions'];
 const EVIDENCE_KEYS = ['artifacts', 'commands', 'toolEvents', 'claims', 'sources', 'unresolved', 'agents', 'dropped'];
@@ -17,7 +22,7 @@ function isPlainObject(value) {
 }
 
 function isIso(value) {
-  return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+  return typeof value === 'string' && ISO_RE.test(value) && !Number.isNaN(Date.parse(value));
 }
 
 export function emptyEvidence() {
@@ -51,19 +56,22 @@ export function newSessionRecord({ sessionId, cwd, now, transcriptPath = null, p
 }
 
 function checkExtensions(value, errors, depth = 0, trail = 'extensions') {
-  if (!isPlainObject(value)) {
-    errors.push(`${trail} must be an object`);
-    return;
-  }
   if (depth > 8) {
     errors.push(`${trail} nests too deeply`);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => { if (Array.isArray(item) || isPlainObject(item)) checkExtensions(item, errors, depth + 1, `${trail}[${i}]`); });
+    return;
+  }
+  if (!isPlainObject(value)) {
+    errors.push(`${trail} must be an object`);
     return;
   }
   for (const key of Object.getOwnPropertyNames(value)) {
     if (FORBIDDEN_EXTENSION_KEYS.has(key)) errors.push(`${trail}.${key} is not allowed`);
     const child = value[key];
-    if (isPlainObject(child)) checkExtensions(child, errors, depth + 1, `${trail}.${key}`);
-    else if (Array.isArray(child)) child.forEach((item, i) => { if (isPlainObject(item)) checkExtensions(item, errors, depth + 1, `${trail}.${key}[${i}]`); });
+    if (Array.isArray(child) || isPlainObject(child)) checkExtensions(child, errors, depth + 1, `${trail}.${key}`);
   }
   if (depth === 0 && !Number.isInteger(value.version)) errors.push('extensions.version must be an integer');
 }
@@ -91,11 +99,24 @@ export function validateSessionRecord(record) {
     for (const key of EVIDENCE_KEYS) if (key !== 'dropped' && !Array.isArray(record.evidence[key])) errors.push(`evidence.${key} must be an array`);
     if (!isPlainObject(record.evidence.dropped) || !Number.isInteger(record.evidence.dropped.toolEvents)) errors.push('evidence.dropped malformed');
   }
-  if (!isPlainObject(record.audit) || !('nonce' in record.audit) || !('receipt' in record.audit)) errors.push('audit malformed');
-  if (!isPlainObject(record.repair) || !Number.isInteger(record.repair.completed) || !Number.isInteger(record.repair.maximum) || !Array.isArray(record.repair.gaps) || !Number.isInteger(record.repair.blocksIssued)) errors.push('repair malformed');
-  if (!(record.closure === null || (isPlainObject(record.closure) && typeof record.closure.reason === 'string' && isIso(record.closure.at)))) errors.push('closure malformed');
+  if (!isPlainObject(record.audit)) errors.push('audit malformed');
+  else {
+    if (!(record.audit.nonce === null || (typeof record.audit.nonce === 'string' && NONCE_RE.test(record.audit.nonce)))) errors.push('audit.nonce must be null or 32 hex characters');
+    if (!(record.audit.receipt === null || isPlainObject(record.audit.receipt))) errors.push('audit.receipt must be null or an object');
+    for (const key of ['invalidatedAt', 'requestedAt']) if (!(record.audit[key] === null || isIso(record.audit[key]))) errors.push(`audit.${key} must be null or an ISO-8601 timestamp`);
+  }
+  if (!isPlainObject(record.repair) || !Array.isArray(record.repair.gaps)) errors.push('repair malformed');
+  else {
+    if (!Number.isInteger(record.repair.completed) || record.repair.completed < 0 || record.repair.completed > MAX_REPAIRS) errors.push(`repair.completed must be an integer between 0 and ${MAX_REPAIRS}`);
+    if (!Number.isInteger(record.repair.maximum) || record.repair.maximum < 0 || record.repair.maximum > MAX_REPAIRS) errors.push(`repair.maximum must be an integer between 0 and ${MAX_REPAIRS}`);
+    if (!Number.isInteger(record.repair.blocksIssued) || record.repair.blocksIssued < 0 || record.repair.blocksIssued > MAX_CONSECUTIVE_BLOCKS) errors.push(`repair.blocksIssued must be an integer between 0 and ${MAX_CONSECUTIVE_BLOCKS}`);
+  }
+  if (!(record.closure === null || (isPlainObject(record.closure) && CLOSURE_REASONS.includes(record.closure.reason) && isIso(record.closure.at)))) errors.push('closure malformed');
   for (const key of ['createdAt', 'updatedAt', 'expiresAt']) if (!isIso(record[key])) errors.push(`${key} must be an ISO-8601 timestamp`);
-  if (record.extensions !== undefined) checkExtensions(record.extensions, errors);
+  if (record.extensions !== undefined) {
+    if (!isPlainObject(record.extensions)) errors.push('extensions must be an object');
+    else checkExtensions(record.extensions, errors);
+  }
   return { ok: errors.length === 0, errors };
 }
 

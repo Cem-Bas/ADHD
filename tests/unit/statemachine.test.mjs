@@ -43,3 +43,21 @@ test('transition records repair count, closure, and retention expiry', () => {
   assert.equal(record.expiresAt, new Date(now + 1000 + 7 * 86_400_000).toISOString());
   assert.throws(() => transition(record, 'REPAIR_2', { now }), /INVALID_TRANSITION|is not allowed/);
 });
+
+test('returning to ACTIVE resets the repair counters, and a missing preferences snapshot falls back to 30 days', () => {
+  const record = newSessionRecord({ sessionId: 's', cwd: '/p', now });
+  transition(record, 'ACTIVE', { now });
+  transition(record, 'REPAIR_1', { now });
+  transition(record, 'REPAIR_2', { now });
+  record.repair.blocksIssued = 2;
+  record.repair.gaps = [{ code: 'X', detail: 'y' }];
+  transition(record, 'COMPLETE', { now });
+  assert.equal(record.repair.completed, 2);
+  transition(record, 'ACTIVE', { now });
+  assert.deepEqual([record.repair.completed, record.repair.blocksIssued, record.repair.gaps], [0, 0, []]);
+  const bare = newSessionRecord({ sessionId: 's2', cwd: '/p', now });
+  delete bare.preferencesSnapshot;
+  transition(bare, 'ACTIVE', { now });
+  transition(bare, 'CANCELLED', { now });
+  assert.equal(bare.expiresAt, new Date(now + 30 * 86_400_000).toISOString());
+});

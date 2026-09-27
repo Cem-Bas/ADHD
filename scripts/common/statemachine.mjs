@@ -1,8 +1,7 @@
-import { REPAIR_PHASES, TERMINAL_PHASES } from './schema.mjs';
+import { REPAIR_PHASES, TERMINAL_PHASES, MAX_REPAIRS, MAX_CONSECUTIVE_BLOCKS } from './schema.mjs';
 import { AdhdError } from './errors.mjs';
 
-export const MAX_REPAIRS = 6;
-export const MAX_CONSECUTIVE_BLOCKS = 7;
+export { MAX_REPAIRS, MAX_CONSECUTIVE_BLOCKS };
 
 export function repairIndex(phase) {
   if (phase === 'ACTIVE') return 0;
@@ -39,11 +38,17 @@ export function transition(record, to, { now = Date.now(), retentionDays } = {})
   const iso = new Date(now).toISOString();
   record.phase = to;
   record.updatedAt = iso;
+  if (to === 'ACTIVE') {
+    record.repair.completed = 0;
+    record.repair.blocksIssued = 0;
+    record.repair.gaps = [];
+  }
   const index = repairIndex(to);
   if (index > 0) record.repair.completed = index;
   if (TERMINAL_PHASES.includes(to)) {
     if (!(record.closure && ['replaced', 'cleared'].includes(record.closure.reason))) record.closure = { reason: CLOSURE_REASONS[to], at: iso };
-    const days = Number.isInteger(retentionDays) ? retentionDays : Number.isInteger(record.preferencesSnapshot.retentionDays) ? record.preferencesSnapshot.retentionDays : 30;
+    const snapshotDays = record.preferencesSnapshot && Number.isInteger(record.preferencesSnapshot.retentionDays) ? record.preferencesSnapshot.retentionDays : 30;
+    const days = Number.isInteger(retentionDays) ? retentionDays : snapshotDays;
     record.expiresAt = new Date(Date.parse(iso) + days * 86_400_000).toISOString();
   }
   return record;
