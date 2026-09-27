@@ -17,24 +17,26 @@ export function nextPhaseAfterFailedEvaluation(phase, maximum = MAX_REPAIRS) {
   return REPAIR_PHASES[index];
 }
 
-export function allowedTransitions(from) {
+export function allowedTransitions(from, maximum = MAX_REPAIRS) {
   if (from === 'IDLE' || TERMINAL_PHASES.includes(from)) return ['ACTIVE'];
   if (from === 'REPORT_REQUIRED') return ['BOUNDED_STOP', 'DEGRADED_STOP', 'CANCELLED'];
   if (from === 'DEGRADED_REPORT_REQUIRED') return ['DEGRADED_STOP', 'CANCELLED'];
   const index = repairIndex(from);
   if (index === -1) return [];
-  const next = index >= MAX_REPAIRS ? 'REPORT_REQUIRED' : REPAIR_PHASES[index];
+  const cap = Math.min(Math.max(0, maximum), MAX_REPAIRS);
+  const next = index >= cap ? 'REPORT_REQUIRED' : REPAIR_PHASES[index];
   return ['COMPLETE', next, 'CANCELLED', 'DEGRADED_REPORT_REQUIRED', 'DEGRADED_STOP'];
 }
 
-export function canTransition(from, to) {
-  return allowedTransitions(from).includes(to);
+export function canTransition(from, to, maximum = MAX_REPAIRS) {
+  return allowedTransitions(from, maximum).includes(to);
 }
 
 const CLOSURE_REASONS = { COMPLETE: 'complete', BOUNDED_STOP: 'bounded', DEGRADED_STOP: 'degraded', CANCELLED: 'cancelled' };
 
 export function transition(record, to, { now = Date.now(), retentionDays } = {}) {
-  if (!canTransition(record.phase, to)) throw new AdhdError('INVALID_TRANSITION', `${record.phase} -> ${to} is not allowed`);
+  const maximum = record.repair && Number.isInteger(record.repair.maximum) ? record.repair.maximum : MAX_REPAIRS;
+  if (!canTransition(record.phase, to, maximum)) throw new AdhdError('INVALID_TRANSITION', `${record.phase} -> ${to} is not allowed`);
   const iso = new Date(now).toISOString();
   record.phase = to;
   record.updatedAt = iso;

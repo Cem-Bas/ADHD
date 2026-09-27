@@ -61,3 +61,17 @@ test('returning to ACTIVE resets the repair counters, and a missing preferences 
   transition(bare, 'CANCELLED', { now });
   assert.equal(bare.expiresAt, new Date(now + 30 * 86_400_000).toISOString());
 });
+
+test('a lowered repair budget reaches REPORT_REQUIRED from its last allowed repair phase', () => {
+  assert.equal(canTransition('REPAIR_2', 'REPORT_REQUIRED', 2), true);
+  assert.equal(canTransition('REPAIR_2', 'REPAIR_3', 2), false);
+  assert.equal(canTransition('ACTIVE', 'REPORT_REQUIRED', 0), true);
+  assert.equal(canTransition('REPAIR_2', 'REPORT_REQUIRED'), false);
+  const record = newSessionRecord({ sessionId: 's', cwd: '/p', now });
+  record.repair.maximum = 2;
+  transition(record, 'ACTIVE', { now });
+  transition(record, 'REPAIR_1', { now });
+  transition(record, 'REPAIR_2', { now });
+  transition(record, 'REPORT_REQUIRED', { now });
+  assert.equal(record.phase, 'REPORT_REQUIRED');
+});
