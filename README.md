@@ -151,7 +151,19 @@ Retention: finished session records are deleted 30 days after they finish (prefe
 
 ## Measured latency
 
-Measured on the release machine with `npm run bench` (Task 18 fills this table).
+Measured on the release machine with `npm run bench` (Node v24.7.0, darwin/arm64; N=20 samples per scenario):
+
+| Scenario | p50 (ms) | p95 (ms) |
+| --- | --- | --- |
+| node startup baseline (`node -e 0`) | 21.0 | 22.0 |
+| stop-check, no ADHD task (inactive path) | 28.2 | 31.7 |
+| prompt-context, control command `/adhd:status` | 30.4 | 34.4 |
+| prompt-context, new task | 31.2 | 31.9 |
+| prompt-context, amendment on an active task | 31.6 | 33.0 |
+| evidence-capture, Bash event on an active task | 30.2 | 31.2 |
+| stop-check, active task without receipt (blocks) | 31.2 | 32.2 |
+
+Targets from the specification: inactive or control-only hooks p95 < 50 ms, ordinary prompt-state hooks p95 < 100 ms; Node's own startup time is the floor. All seven measured scenarios meet their target.
 
 ## Development
 
