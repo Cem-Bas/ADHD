@@ -4817,6 +4817,7 @@ git commit -m "feat: add the state.mjs CLI for audits, evidence, preferences, an
 **Interfaces:**
 - Consumes: the four hook scripts, `state.mjs`, `tests/helpers.mjs`, `tests/fixtures/hold-lock.mjs`, `acquireLock` from `scripts/common/lock.mjs`, `validateSessionRecord` from schema.
 - Produces: `npm run bench` prints one line per scenario with p50/p95 milliseconds plus a final JSON line `{ node, platform, results }`; it asserts nothing (measurements go into the README in Task 18).
+- Revision after the Task 14 review (recorded in the SDD ledger): `store.mutateSession` reads its default lock timeout from `ADHD_LOCK_TIMEOUT_MS` (falling back to 2000 ms) so slow CI runners can raise it; the eight-way concurrency test passes `ADHD_LOCK_TIMEOUT_MS=10000` to its children.
 
 - [ ] **Step 1: Write `tests/integration/concurrency.test.mjs`**
 
