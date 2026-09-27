@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/logo.png" alt="ADHD logo: the letters A D H D drawn as glowing circuit traces with microchips" width="640"></p>
+
 # ADHD — keep Claude Code anchored to your actual request
 
 ADHD is an always-on Claude Code plugin. It makes scope, progress, research depth, limitations, and completion evidence visible so that correcting Claude stays cheap. It was designed for people who benefit from short steps, stable wording, visible state, and explicit completion checks. It does not diagnose or treat anything, it does not infer anything about you, and nothing in it depends on a diagnosis. The repository is named `ADHD`; the deep-research mode is named **Hyperfocus**.
