@@ -1,0 +1,42 @@
+# ADHD plugin architecture (0.1.0)
+
+This document describes what is implemented. The specification (`docs/superpowers/specs/2026-09-27-adhd-claude-code-plugin-design.md`) is the design authority; the last section lists every deliberate deviation.
+
+## Components
+
+- `hooks/hooks.json` — exec-form command hooks: `SessionStart` (`startup|resume|clear|compact|fork`), `UserPromptSubmit`, `PostToolUse` and `PostToolUseFailure` (matcher `Bash|Edit|Write|MultiEdit|NotebookEdit|WebFetch|WebSearch|Agent|Task`), `SubagentStart`, `SubagentStop`, `Stop`.
+- `scripts/prompt-context.mjs`, `scripts/restore-context.mjs`, `scripts/evidence-capture.mjs`, `scripts/stop-check.mjs` — one script per hook family; each reads Claude Code's JSON from stdin, never exits non-zero, and prints at most one JSON line.
+- `scripts/state.mjs` — the CLI used by skills and agents (`status`, `contract`, `audit-record`, `evidence-add`, `artifact-declare`, `cancel`, `mode`, `new`, `prefs`, `data`, `gc`).
+- `scripts/common/` — `paths` (data root, validation, project key), `fsx` (atomic writes, quarantine), `lock` (mkdir lock with owner fingerprint and stale recovery), `schema` (v1 record, validation, migration), `statemachine`, `controls` (exact cancel/replace/control parsing, Hyperfocus phrases), `prefs`, `evidence` (tool-event summaries, clipping, redaction), `ledger` (claim rules, independence, confidence), `session` (lifecycle, receipts, deterministic stop evaluation), `store`, `diagnostics`, `retention`, `transcript`, `render` (every text Claude sees), `hook` (runner).
+- `skills/*/SKILL.md` — the eight `/adhd:*` commands. `agents/*.md` — `contract-auditor`, `source-researcher`, `evidence-verifier`.
+
+## Data flow
+
+1. `UserPromptSubmit` classifies the prompt (control, exact cancel, replace prefix, machine source, ordinary), mutates the session record under the lock, and injects `additionalContext`: the verbatim ledger, effective preferences, the Task Lock protocol, exact `state.mjs` commands, and the auditor invocation with the current nonce.
+2. Tool hooks append bounded evidence. Only mutating tools (Bash, Edit, Write, MultiEdit, NotebookEdit) participate in the evidence digest, so an `Agent` call (the audit itself) does not stale the receipt while a later edit does. Tool activity inside subagents (`agent_id` present) is not recorded.
+3. The main agent invokes `adhd:contract-auditor`, which derives requirements from the ledger, checks evidence, and runs `state.mjs audit-record`. The receipt is accepted only when task id, nonce, contract version, and request digest match; it stores the evidence digest at that moment.
+4. `Stop` evaluates: fresh receipt, PASS items, declared artifacts exist, referenced commands succeeded, Hyperfocus ledger coverage. Pass → `COMPLETE`. Only `BLOCKED` items → the task pauses (allowed, not complete). Otherwise the state machine advances, the nonce rotates, and the hook blocks with a targeted repair instruction; after the configured repair budget it blocks once more for a bounded-stop report, then allows `BOUNDED_STOP`.
+5. `SessionStart` on `resume`/`compact` re-injects the ledger, phase, gaps, receipt state, preferences, and the auditor invocation.
+
+## State machine
+
+`IDLE → ACTIVE → COMPLETE | REPAIR_1..REPAIR_6 | CANCELLED | DEGRADED_REPORT_REQUIRED`; `REPAIR_6 → REPORT_REQUIRED → BOUNDED_STOP`; `DEGRADED_REPORT_REQUIRED → DEGRADED_STOP`; any terminal phase `→ ACTIVE` on the next new task. `repair.blocksIssued` counts consecutive Stop blocks (reset by a user turn) and can never exceed 7; the seventh block always requests the bounded report.
+
+## Session record (schema version 1)
+
+The record matches the specification's schema with these additions: `transcriptPath`, `evidence.unresolved`, `evidence.agents`, `evidence.dropped`, `audit.requestedAt`, `repair.blocksIssued`, and `closure` (`{ reason: complete | bounded | degraded | cancelled | replaced | cleared, at }`). Unknown top-level fields are rejected; `extensions` accepts nested metadata but rejects keys such as `command`, `exec`, `shell`, `script`, `eval`, `args`, `__proto__`, `constructor`, `prototype`. Records over 2 MiB are never written; a prompt that would exceed the cap leaves the previous state intact and moves the task to `DEGRADED_REPORT_REQUIRED`.
+
+## Deviations from the specification, with reasons
+
+1. **`skills/prefs/` instead of `skills/preferences/`** — a skill's slash-command name is its directory name, and the command is `/adhd:prefs`.
+2. **BLOCKED items pause instead of repairing** — when the fresh receipt's only gaps are `BLOCKED` items (an unresolved external condition or a fact only the user can supply), the Stop hook allows the turn to end without marking `COMPLETE` and without consuming a repair cycle. A repair cannot produce a fact only the user has, and the specification itself says Claude should wait in that case.
+3. **No per-agent wall-clock timeout** — Claude Code exposes `maxTurns` (set to 12) but no timeout field; the 120-second budget is an instruction inside each agent prompt.
+4. **Auditor tool restriction by instruction** — the auditor's tools are `Read, Grep, Glob, Bash`; limiting Bash to the single `audit-record` command is an instruction, not a permission rule, because agent frontmatter cannot express a command allow-list.
+5. **Abandoned open tasks** — an open task whose record has not been updated for 90 days is removed at the next startup cleanup, so storage stays bounded even when a task is never finished or cancelled.
+6. **Nonce rotation** — the nonce rotates on user turns, mode changes, and failed Stop evaluations, not on tool events; evidence changes are detected through the evidence digest stored in the receipt. This keeps the nonce the main agent hands to the auditor valid while work happens.
+7. **Machine-injected prompts** (`loop_wakeup`, `schedule_wakeup`, `system`, `poll_event`) are never captured as user turns and never consume repairs; the specification's "background tasks and scheduled wakeups do not consume repair cycles" is also implemented in the Stop hook through Claude Code's `background_tasks` and `session_crons` fields.
+8. **Identity-checked stale-lock recovery** — `recoverStaleLock` displaces a lock directory only when its recorded owner still matches the owner just inspected, and the handle's `release()` removes the directory only if the calling process still owns it; the store's `mutateSession` calls the same handle's `verify()` immediately before every `saveSession`, so a process that lost the lock to recovery fails loudly instead of silently overwriting the new holder's work.
+9. **Strict schema validation with self-resetting repair counters** — timestamps must match an ISO-8601 pattern, `repair.completed`/`repair.maximum`/`repair.blocksIssued` are bounded integers, `closure.reason` is restricted to a fixed enum, the audit fields are individually typed, and `extensions` is walked through nested arrays to reject dangerous keys at any depth. The repair counters and gap list reset to zero whenever the state machine transitions a task back to `ACTIVE`.
+10. **The transition table honours the task's own repair budget** — `allowedTransitions` and `nextPhaseAfterFailedEvaluation` take the record's `repair.maximum` (capped at the schema's six-repair ceiling) instead of assuming the maximum, so a task started under a lower `repairCycles` preference cannot gain extra repairs later.
+11. **The rendered ledger is bounded, the stored one is not** — `renderLedger` shows the model only the latest 12 user turns inside a fixed character budget so injected context stays small and stable; `state.mjs contract` still returns every turn from the state file, so the auditor reads the full ledger even when the model-visible copy has been trimmed.
+12. **Listings tolerate unreadable entries** — `listSessionRecords`, `cleanupExpired`, and `/adhd:data show` each skip a session or diagnostics file that fails to parse or `stat` instead of throwing, so one corrupted record no longer hides or blocks access to the rest; a record addressed directly by its session id is still quarantined and reported as corrupt precisely.
