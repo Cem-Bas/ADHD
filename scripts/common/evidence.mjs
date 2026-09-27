@@ -50,10 +50,10 @@ const URL_RE = /https?:\/\/[^\s"'<>)\]]+/g;
 
 export function extractUrls(toolInput, toolResponse) {
   const out = new Set();
-  if (toolInput && typeof toolInput.url === 'string') out.add(toolInput.url);
+  if (toolInput && typeof toolInput.url === 'string') out.add(redact(toolInput.url));
   const text = asString(toolResponse).slice(0, 64 * 1024);
   for (const match of text.match(URL_RE) || []) {
-    out.add(match);
+    out.add(redact(match));
     if (out.size >= 50) break;
   }
   return [...out];

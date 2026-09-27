@@ -122,6 +122,30 @@ test('cancel, replace, agent tracking, and degraded task creation', () => {
   assert.equal(validateSessionRecord(degraded).ok, true);
 });
 
+test('research sources are copied with secret-like url parameters redacted, and the redacted url deduplicates', () => {
+  const record = fresh('deep research on x');
+  setMode(record, 'hyperfocus', now);
+  const source = { url: 'https://data.example/report?token=abcdefghijklmnop', title: 'R', publisher: 'P', publicationDate: '2026-01-01', accessedAt: '2026-09-27T00:00:00Z', sourceType: 'secondary', evidenceChainId: 'r', relation: 'supports' };
+  addResearchEvidence(record, { claims: [{ claimId: 'c1', text: 't', class: 'background', stability: 'stable', controversy: 'undisputed', confidence: 'low', rationale: 'r', sources: [source] }], sources: [source] });
+  assert.deepEqual(record.evidence.sources.map((item) => item.url), ['https://data.example/report?[REDACTED]']);
+  addResearchEvidence(record, { sources: [source] });
+  assert.equal(record.evidence.sources.length, 1);
+  assert.equal(validateSessionRecord(record).ok, true);
+});
+
+test('SubagentStop closes the latest open entry for an agent id that started more than once', () => {
+  const record = fresh();
+  const stop = (at) => trackAgent(record, { hook_event_name: 'SubagentStop', agent_id: 'ag1', agent_type: 'adhd:contract-auditor' }, at);
+  trackAgent(record, { hook_event_name: 'SubagentStart', agent_id: 'ag1', agent_type: 'adhd:contract-auditor' }, now);
+  trackAgent(record, { hook_event_name: 'SubagentStart', agent_id: 'ag1', agent_type: 'adhd:contract-auditor' }, now + 5);
+  stop(now + 10);
+  assert.deepEqual(record.evidence.agents.map((agent) => agent.stoppedAt), [null, new Date(now + 10).toISOString()]);
+  stop(now + 20);
+  assert.deepEqual(record.evidence.agents.map((agent) => agent.stoppedAt), [new Date(now + 20).toISOString(), new Date(now + 10).toISOString()]);
+  trackAgent(record, { hook_event_name: 'SubagentStop', agent_id: 'ghost' }, now + 30);
+  assert.equal(record.evidence.agents.length, 2);
+});
+
 test('tool event list is capped and drop count recorded; evidence digest ignores dropped history', () => {
   const record = fresh();
   for (let i = 0; i < 505; i += 1) recordToolEvent(record, bashEvent(`u${i}`), now);

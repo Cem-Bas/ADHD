@@ -146,6 +146,7 @@ Retention: finished session records are deleted 30 days after they finish (prefe
 - The hooks enforce structure: verbatim capture, a fresh nonce-bound audit receipt, deterministic evidence checks, and the repair bound. The wording of the Task Lock, progress blocks, and boundary reviews is produced by the model and remains model-dependent.
 - The plugin does not and cannot override Anthropic policy, operating-system permissions, your authorisation, or the law. It makes restrictions precise; it does not bypass them.
 - Every ordinary request is audited before Claude may finish, which adds one subagent call per completed task (two or more when repairs happen).
+- Every ordinary prompt after a completed task — even a one-word thank-you — starts a new audited task, and every user turn after a receipt forces a fresh audit before Claude may finish.
 - Claude Code has no per-agent wall-clock timeout. Researchers and the auditor are limited to 12 turns; the 120-second budget is an instruction in their prompts.
 - The auditor's Bash access is limited to the `state.mjs audit-record` command by instruction and by its tool list, not by a permission rule.
 - Nothing proves that the receipt was recorded by the `adhd:contract-auditor` subagent rather than by the main agent, which sees the same nonce; the auditor's independence is a separate context with read-only tools, not cryptography. The deterministic checks (artifacts exist, referenced commands succeeded, ledger coverage) are what cannot be talked around.
@@ -173,8 +174,10 @@ Targets from the specification: inactive or control-only hooks p95 < 50 ms, ordi
 ```bash
 npm test                          # unit + integration tests (node --test)
 npm run bench                     # hook latency p50/p95
-claude plugin validate . --strict # manifest, hooks, skills, agents
+claude plugin validate . --strict # checks the manifests
 ```
+
+`claude plugin validate . --strict` checks the manifests (in Claude Code 2.1.283 it validates the marketplace manifest; the layout test in `tests/unit/plugin-layout.test.mjs` checks skills, agents, and hooks).
 
 See `CONTRIBUTING.md` for the workflow and `docs/architecture.md` for the design, the state machine, and the differences from the original specification. The behavioural evaluation corpus and how to run it are in `evals/README.md`.
 

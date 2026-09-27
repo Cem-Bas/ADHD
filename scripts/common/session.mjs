@@ -2,7 +2,7 @@ import path from 'node:path';
 import { randomTaskId, randomNonce, digestOf } from './ids.mjs';
 import { emptyEvidence, MAX_TOOL_EVENTS, MAX_REPAIRS, MODES, isOpenPhase } from './schema.mjs';
 import { transition, repairIndex } from './statemachine.mjs';
-import { MUTATING_TOOLS } from './evidence.mjs';
+import { MUTATING_TOOLS, redact } from './evidence.mjs';
 import { validateClaim, validateUnresolved, assessLedger } from './ledger.mjs';
 import { AdhdError } from './errors.mjs';
 
@@ -123,7 +123,7 @@ export function trackAgent(record, input, at) {
     agents.push({ agentId, agentType: String(input.agent_type || ''), startedAt: iso(at), stoppedAt: null });
     if (agents.length > MAX_AGENTS) agents.splice(0, agents.length - MAX_AGENTS);
   } else if (input.hook_event_name === 'SubagentStop') {
-    const entry = agents.find((agent) => agent.agentId === agentId && agent.stoppedAt === null);
+    const entry = agents.findLast((agent) => agent.agentId === agentId && agent.stoppedAt === null);
     if (entry) entry.stoppedAt = iso(at);
   }
   return record;
@@ -155,7 +155,7 @@ export function addResearchEvidence(record, { claims = [], sources = [], unresol
   const knownClaims = new Set(record.evidence.claims.map((item) => item.claimId));
   const newClaimIds = new Set(claims.map((claim) => claim.claimId).filter((id) => !knownClaims.has(id)));
   const knownSources = new Set(record.evidence.sources.map((item) => item.url));
-  const incomingSources = [...sources, ...claims.flatMap((claim) => claim.sources)].filter((source) => source && typeof source.url === 'string');
+  const incomingSources = [...sources, ...claims.flatMap((claim) => claim.sources)].filter((source) => source && typeof source.url === 'string').map((source) => ({ ...source, url: redact(source.url) }));
   const newSourceUrls = new Set(incomingSources.map((source) => source.url).filter((url) => !knownSources.has(url)));
   if (knownClaims.size + newClaimIds.size > MAX_CLAIMS || knownSources.size + newSourceUrls.size > MAX_SOURCES) throw new AdhdError('LEDGER_TOO_LARGE', `claim ledger exceeds limits (${MAX_CLAIMS} claims, ${MAX_SOURCES} sources)`);
   for (const claim of claims) {

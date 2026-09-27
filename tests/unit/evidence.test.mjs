@@ -48,6 +48,14 @@ test('summarizeToolEvent covers success, failure, and agent metadata', () => {
   assert.equal(MUTATING_TOOLS.has('Bash'), true);
 });
 
+test('urls carrying secret-like query parameters are redacted before they are stored', () => {
+  const urls = extractUrls({ url: 'https://api.example/v1?token=abcdefghijklmnop' }, 'fetched https://cdn.example/x?api_key=0123456789abcdef and https://ok.example/page');
+  assert.deepEqual(urls, ['https://api.example/v1?[REDACTED]', 'https://cdn.example/x?[REDACTED]', 'https://ok.example/page']);
+  const event = summarizeToolEvent({ hook_event_name: 'PostToolUse', tool_name: 'WebFetch', tool_use_id: 'u4', tool_input: { url: 'https://api.example/v1?token=abcdefghijklmnop' }, tool_response: 'see https://api.example/v1?token=abcdefghijklmnop' }, { now: 0 });
+  assert.deepEqual(event.urls, ['https://api.example/v1?[REDACTED]']);
+  assert.equal(JSON.stringify(event).includes('abcdefghijklmnop'), false);
+});
+
 test('failure events keep a recoverable exit status, and Bearer redaction leaves prose alone', () => {
   const failed = summarizeToolEvent({ hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_use_id: 'u9', tool_input: { command: 'npm test' }, error: 'Command failed. Exit code: 1' }, { now: 0 });
   assert.deepEqual([failed.ok, failed.exitStatus], [false, 1]);
