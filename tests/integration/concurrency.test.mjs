@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import path from 'node:path';
 import { tmpDataRoot, tmpProjectDir, runHook, promptInput, toolInput, readSession, SCRIPTS } from '../helpers.mjs';
 import { validateSessionRecord } from '../../scripts/common/schema.mjs';
 
-function spawnHook(kind, root, input) {
+function spawnHook(kind, root, input, extraEnv = {}) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [SCRIPTS[kind], '--data', root], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [SCRIPTS[kind], '--data', root], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ADHD_LOCK_TIMEOUT_MS: '10000', ...extraEnv } });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => { stdout += chunk; });
@@ -57,4 +58,21 @@ test('concurrent evidence and prompt hooks keep the record valid', async () => {
   assert.equal(record.evidence.toolEvents.length, 4);
   assert.equal(record.userTurns.length, 2);
   assert.equal(validateSessionRecord(record).ok, true);
+});
+
+test('the lock timeout honours ADHD_LOCK_TIMEOUT_MS', async () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  runHook('prompt', root, promptInput({ prompt: 'start', cwd }));
+  const { acquireLock } = await import('../../scripts/common/lock.mjs');
+  const lock = acquireLock(path.join(root, 'sessions', 'sess-test-1.lock'));
+  try {
+    const started = Date.now();
+    const result = await spawnHook('prompt', root, promptInput({ prompt: 'blocked', cwd }), { ADHD_LOCK_TIMEOUT_MS: '300' });
+    assert.equal(result.status, 0);
+    assert.match(result.stderr, /LOCK_TIMEOUT/);
+    assert.ok(Date.now() - started < 2000, 'a 300 ms override must not wait the default 2 s');
+  } finally {
+    lock.release();
+  }
 });

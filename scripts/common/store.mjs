@@ -29,7 +29,12 @@ export function saveSession(root, record) {
   writeFileAtomic(sessionFile(root, record.sessionId), data);
 }
 
-export function mutateSession(root, sessionId, fn, { create = null, now = Date.now(), lockTimeoutMs = 2000 } = {}) {
+function defaultLockTimeoutMs() {
+  const configured = Number(process.env.ADHD_LOCK_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : 2000;
+}
+
+export function mutateSession(root, sessionId, fn, { create = null, now = Date.now(), lockTimeoutMs = defaultLockTimeoutMs() } = {}) {
   validateSessionId(sessionId);
   const paths = dataPaths(root);
   ensureDir(paths.sessions);
