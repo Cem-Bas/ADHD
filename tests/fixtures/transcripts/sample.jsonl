@@ -1,0 +1,7 @@
+{"type":"user","message":{"role":"user","content":"please build it"},"isMeta":false,"isSidechain":false,"uuid":"u1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"hmm"}]},"isSidechain":false,"uuid":"a1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]},"isSidechain":false,"uuid":"a2"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]},"isSidechain":false,"uuid":"u2"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"First part."}]},"isSidechain":false,"uuid":"a3"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ignored sidechain"}]},"isSidechain":true,"uuid":"a4"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Second part."}]},"isSidechain":false,"uuid":"a5"}
