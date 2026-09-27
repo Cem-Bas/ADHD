@@ -7,7 +7,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { tmpDataRoot } from '../helpers.mjs';
-import { acquireLock, withLock, lockIsStale, LOCK_STALE_MS } from '../../scripts/common/lock.mjs';
+import { acquireLock, withLock, lockIsStale, LOCK_STALE_MS, inspectLockDir, recoverStaleLock, readOwner, releaseLock } from '../../scripts/common/lock.mjs';
 
 const fixture = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'hold-lock.mjs');
 
@@ -55,4 +55,55 @@ test('lockIsStale follows the spec rules', () => {
   const aliveButOld = { pid: process.pid, hostname: host, acquiredAt: new Date(now - LOCK_STALE_MS - 1).toISOString() };
   assert.equal(lockIsStale(aliveButOld, { now, hostname: host, isAlive: () => true }), false);
   assert.equal(lockIsStale(null, { now }), true);
+  assert.equal(lockIsStale({ pid: 1, hostname: 'elsewhere', acquiredAt: 'garbage' }, { now, hostname: host, isAlive: () => true }), true);
+});
+
+test('a recovery based on stale information cannot steal a lock that a live process re-acquired', () => {
+  const root = tmpDataRoot();
+  const dir = path.join(root, 'sessions', 's.lock');
+  const diagnostics = path.join(root, 'diagnostics');
+  spawnSync(process.execPath, [fixture, dir], { encoding: 'utf8' });
+  const judged = inspectLockDir(dir);
+  assert.equal(judged.stale, true);
+  assert.notEqual(judged.owner, null);
+  const live = acquireLock(dir, { timeoutMs: 500, diagnosticsDir: diagnostics });
+  assert.equal(live.recoveredStale, true);
+  assert.deepEqual(recoverStaleLock(dir, diagnostics, judged.owner), { recovered: false, error: null });
+  assert.equal(readOwner(dir).pid, process.pid);
+  live.verify();
+  live.release();
+  assert.equal(fs.existsSync(dir), false);
+  assert.equal(fs.readdirSync(diagnostics).filter((name) => name.startsWith('stale-s.lock')).length, 1);
+});
+
+test('release never removes a lock now owned by someone else, and verify reports the loss', () => {
+  const dir = path.join(tmpDataRoot(), 'sessions', 's.lock');
+  const lock = acquireLock(dir);
+  fs.writeFileSync(path.join(dir, 'owner.json'), JSON.stringify({ pid: 999999, hostname: os.hostname(), fingerprint: 'other', acquiredAt: new Date().toISOString() }));
+  assert.throws(() => lock.verify(), /LOCK_LOST|no longer held/);
+  lock.release();
+  assert.equal(fs.existsSync(dir), true);
+  releaseLock(dir);
+  assert.equal(fs.existsSync(dir), false);
+});
+
+test('recovering a lock that is already gone is not an error, and recoveredStale is only reported for a real recovery', () => {
+  const root = tmpDataRoot();
+  const dir = path.join(root, 'sessions', 's.lock');
+  assert.deepEqual(recoverStaleLock(dir, path.join(root, 'diagnostics'), null), { recovered: false, error: null });
+  const lock = acquireLock(dir);
+  assert.equal(lock.recoveredStale, false);
+  assert.deepEqual(recoverStaleLock(dir, path.join(root, 'diagnostics'), { pid: 1, hostname: 'x', fingerprint: 'y', acquiredAt: 'z' }), { recovered: false, error: null });
+  assert.equal(readOwner(dir).pid, process.pid);
+  lock.release();
+});
+
+test('withLock hands the handle to the callback', () => {
+  const dir = path.join(tmpDataRoot(), 'sessions', 's.lock');
+  const result = withLock(dir, (lock) => {
+    lock.verify();
+    return lock.owner.pid;
+  });
+  assert.equal(result, process.pid);
+  assert.equal(fs.existsSync(dir), false);
 });
