@@ -249,12 +249,34 @@ before uninstalling):
 
 **The auditor was invoked and did produce a receipt** — this is not a
 `phase: REPAIR_n` / no-receipt case. The session matches the brief's expected
-outcome via its second form: one visible repair block (`REPAIR_1`, per the
-model's own note about its first `audit-record` invocations failing on shell
-quoting/permissions, not on plugin logic), followed by a successful
-`PASS` receipt and `COMPLETE`. The computed Stop-hook `systemMessage` for
-this final record (`scripts/stop-check.mjs`, the `COMPLETE` branch) would
-read `ADHD: contract verified — COMPLETE (1/1 items PASS, 1 repair(s)).`
+outcome via its second form: one visible repair block (`REPAIR_1`), followed
+by a successful `PASS` receipt and `COMPLETE`. The computed Stop-hook
+`systemMessage` for this final record (`scripts/stop-check.mjs`, the
+`COMPLETE` branch) would read `ADHD: contract verified — COMPLETE (1/1 items
+PASS, 1 repair(s)).`
+
+**Why there was a repair cycle at all** (corrected in the final review; an
+earlier version of this record repeated the model's own note and put the
+cycle down to a quoting slip on the model's side). The session record shows
+a plugin defect. `userTurns[0]` and `userTurns[1]` are not user messages:
+they are two `<task-notification>` envelopes, the completions of the first
+two auditor runs (`a89ef8d812b59caa7`, stopped 22:57:46 UTC; `a77cddf99385ee890`,
+stopped 22:59:47 UTC), which ran in the background and whose notifications
+Claude Code delivered as prompts with `source: "user"`. The `UserPromptSubmit`
+hook captured each as an amendment, so a one-sentence request ended at
+`contractVersion: 3`, and each capture rotated the audit nonce, which would
+have staled any receipt those auditors had managed to record. Neither of
+them recorded one (the first was denied Bash; the second's quoted heredoc
+was rejected by Claude Code's Bash filter and its retry was denied), so the
+Stop hook blocked once with `AUDIT_MISSING` (`REPAIR_1`), and the third
+auditor (`aaa1190a5b9f6b15a`) ran in the foreground — no notification for it
+appears in the record — and recorded the `PASS` receipt against contract v3
+at 23:01:12 UTC. The capture defect is fixed in commit `9442e0f` (a prompt
+made only of system envelopes, or with a non-human source, is never captured
+as a user turn and can neither cancel nor control a task); the heredoc
+advice in the auditor prompt is replaced by a single-quoted here-string in
+commit `a41d106`, and the README now states the Bash permission the auditor
+needs.
 
 ### Cleanup
 
