@@ -4364,6 +4364,7 @@ git commit -m "feat: add the Stop hook completion gate with bounded repair"
 **Interfaces:**
 - Usage: `node state.mjs <subcommand> [--data <dir>] [--session <id> | --cwd <path>] [options]`. Every invocation prints exactly one JSON line. Success exits 0; failure prints `{"error":{"code","message","details?"}}` and exits 1.
 - Session resolution: `--session` when given; otherwise `--cwd` selects the single open task for that directory (`NOT_FOUND` when none, `AMBIGUOUS_SESSION` when several); otherwise `USAGE`.
+- Revision after the Tasks 12+13 review (recorded in the SDD ledger): `data show`/`data export` skip files that vanish between listing and reading; `store.listSessionRecords` and `retention.cleanupExpired` skip entries `readJsonFile` cannot read (for example a directory named like a record) instead of throwing; `audit-record` and `cancel` report a quarantined record as `STATE_CORRUPT`; `main()` parses arguments inside its error boundary. The code below is the original brief; the corrected files are in `scripts/`.
 - Subcommands and outputs:
   - `status` → `statusSummary(record)`.
   - `contract` → `{ sessionId, taskId, phase, mode, contractVersion, requestDigest, originalRequest, userTurns }`.
