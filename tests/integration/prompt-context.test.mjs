@@ -118,6 +118,23 @@ test('Hyperfocus does not stick to the next task; a bare /adhd:hyperfocus applie
   assert.equal(readSession(root, 'sess-test-1').mode, 'standard');
 });
 
+test('read-only controls mark the turn as a control on an open task and create no state without one', () => {
+  const root = tmpDataRoot();
+  runHook('prompt', root, promptInput({ prompt: '/adhd:status' }));
+  assert.equal(fs.existsSync(sessionFilePath(root, 'sess-test-1')), false);
+  runHook('prompt', root, promptInput({ prompt: 'task' }));
+  assert.equal(readSession(root, 'sess-test-1').extensions.lastTurn, 'user');
+  runHook('prompt', root, promptInput({ prompt: '/adhd:why' }));
+  assert.equal(readSession(root, 'sess-test-1').extensions.lastTurn, 'control');
+  runHook('prompt', root, promptInput({ prompt: 'wake', source: 'loop_wakeup' }));
+  assert.equal(readSession(root, 'sess-test-1').extensions.lastTurn, 'control');
+  runHook('prompt', root, promptInput({ prompt: '/adhd:hyperfocus' }));
+  assert.deepEqual([readSession(root, 'sess-test-1').mode, readSession(root, 'sess-test-1').extensions.lastTurn], ['hyperfocus', 'user']);
+  runHook('prompt', root, promptInput({ prompt: '/adhd:contract' }));
+  runHook('prompt', root, promptInput({ prompt: 'a correction' }));
+  assert.equal(readSession(root, 'sess-test-1').extensions.lastTurn, 'user');
+});
+
 test('hyperfocus phrases and the researchDepth preference select the mode', () => {
   const root = tmpDataRoot();
   runHook('prompt', root, promptInput({ prompt: 'please do deep research on caching' }));

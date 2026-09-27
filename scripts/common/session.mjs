@@ -31,6 +31,11 @@ export function computeEvidenceDigest(record) {
   });
 }
 
+export function markLastTurn(record, kind) {
+  record.extensions = { version: 1, ...record.extensions, lastTurn: kind };
+  return record;
+}
+
 export function startTask(record, { text, receivedAt, mode = 'standard', transcriptPath, preferencesSnapshot, retentionDays }) {
   if (preferencesSnapshot) record.preferencesSnapshot = preferencesSnapshot;
   if (transcriptPath) record.transcriptPath = transcriptPath;
@@ -38,7 +43,8 @@ export function startTask(record, { text, receivedAt, mode = 'standard', transcr
   record.contractVersion = 1;
   if (!MODES.includes(mode)) throw new AdhdError('INVALID_MODE', `mode must be one of ${MODES.join(', ')}`);
   record.mode = mode;
-  if (record.extensions) delete record.extensions.pendingMode;
+  markLastTurn(record, 'user');
+  delete record.extensions.pendingMode;
   record.originalRequest = { text, receivedAt: iso(receivedAt) };
   record.userTurns = [];
   record.evidence = emptyEvidence();
@@ -63,6 +69,7 @@ export function invalidateAudit(record, at) {
 
 export function appendUserTurn(record, { text, receivedAt }) {
   record.userTurns.push({ sequence: record.userTurns.length + 1, text, receivedAt: iso(receivedAt) });
+  markLastTurn(record, 'user');
   record.contractVersion += 1;
   record.requestDigest = computeRequestDigest(record);
   record.repair.blocksIssued = 0;

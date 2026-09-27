@@ -17,6 +17,10 @@ function lastMessage(input, record) {
 
 function decide(record, { input, now, pluginRoot, dataRoot }) {
   if (!isOpenPhase(record.phase)) return { skipSave: true, result: null };
+  if (record.extensions?.lastTurn === 'control') {
+    record.extensions.lastTurn = 'user';
+    return { result: null };
+  }
   const background = Array.isArray(input.background_tasks) ? input.background_tasks.length : 0;
   const crons = Array.isArray(input.session_crons) ? input.session_crons.length : 0;
   if (background > 0 || crons > 0) return { skipSave: true, result: null };

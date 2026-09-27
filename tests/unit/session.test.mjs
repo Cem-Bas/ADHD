@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { newSessionRecord, validateSessionRecord } from '../../scripts/common/schema.mjs';
-import { startTask, appendUserTurn, setMode, cancelTask, closeReplaced, recordToolEvent, declareArtifacts, addResearchEvidence, auditFreshness, recordAuditReceipt, evaluateStop, receiptCoverage, trackAgent, createDegradedTask, computeEvidenceDigest } from '../../scripts/common/session.mjs';
+import { startTask, appendUserTurn, setMode, cancelTask, closeReplaced, recordToolEvent, declareArtifacts, addResearchEvidence, auditFreshness, recordAuditReceipt, evaluateStop, receiptCoverage, trackAgent, createDegradedTask, computeEvidenceDigest, markLastTurn } from '../../scripts/common/session.mjs';
 import { summarizeToolEvent } from '../../scripts/common/evidence.mjs';
 import { passingReceipt } from '../helpers.mjs';
 
@@ -136,6 +136,20 @@ test('receipts are rejected once the task is closed, and the record stays valid'
   cancelTask(record, now);
   assert.equal(recordAuditReceipt(record, passingReceipt(record), now).reason, 'NO_ACTIVE_TASK');
   assert.equal(validateSessionRecord(record).ok, true);
+});
+
+test('task start and user turns mark the last turn as a user turn; a control mark survives until then', () => {
+  const record = fresh();
+  assert.equal(record.extensions.lastTurn, 'user');
+  markLastTurn(record, 'control');
+  assert.equal(record.extensions.lastTurn, 'control');
+  appendUserTurn(record, { text: 'more', receivedAt: now + 1 });
+  assert.deepEqual([record.extensions.lastTurn, record.extensions.version], ['user', 1]);
+  assert.deepEqual(validateSessionRecord(record), { ok: true, errors: [] });
+  const bare = newSessionRecord({ sessionId: 's3', cwd: '/p', now });
+  delete bare.extensions;
+  markLastTurn(bare, 'control');
+  assert.deepEqual(bare.extensions, { version: 1, lastTurn: 'control' });
 });
 
 test('startTask consumes a pending mode request and keeps the extensions valid', () => {

@@ -26,6 +26,33 @@ test('no state or a closed task allows the stop silently', () => {
   assert.equal(runHook('stop', root, stopInput({ cwd })).stdout, '');
 });
 
+test('a read-only control command is answered without evaluation; the next real turn is evaluated again', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  begin(root, cwd);
+  for (const command of ['/adhd:status', '/adhd:contract', '/adhd:prefs show', '/adhd:data show', '/adhd:why']) {
+    runHook('prompt', root, promptInput({ prompt: command, cwd }));
+    assert.equal(readSession(root, 'sess-test-1').extensions.lastTurn, 'control', command);
+    const quiet = runHook('stop', root, stopInput({ cwd, lastAssistantMessage: 'Here is what you asked for.' }));
+    assert.deepEqual([quiet.status, quiet.stdout], [0, ''], command);
+    const record = readSession(root, 'sess-test-1');
+    assert.deepEqual([record.phase, record.repair.completed, record.repair.blocksIssued, record.extensions.lastTurn], ['ACTIVE', 0, 0, 'user'], command);
+  }
+  runHook('prompt', root, promptInput({ prompt: 'also add docs', cwd }));
+  assert.equal(readSession(root, 'sess-test-1').extensions.lastTurn, 'user');
+  const evaluated = runHook('stop', root, stopInput({ cwd, lastAssistantMessage: 'All done!' })).json;
+  assert.equal(evaluated.decision, 'block');
+  assert.ok(evaluated.reason.includes('[AUDIT_MISSING]'));
+  assert.equal(readSession(root, 'sess-test-1').phase, 'REPAIR_1');
+  runHook('prompt', root, promptInput({ prompt: '/adhd:status', cwd }));
+  assert.equal(runHook('stop', root, stopInput({ cwd, stopHookActive: true })).stdout, '');
+  const paused = readSession(root, 'sess-test-1');
+  assert.deepEqual([paused.phase, paused.repair.completed, paused.repair.blocksIssued], ['REPAIR_1', 1, 1]);
+  const again = runHook('stop', root, stopInput({ cwd, stopHookActive: true })).json;
+  assert.equal(again.decision, 'block');
+  assert.equal(readSession(root, 'sess-test-1').phase, 'REPAIR_2');
+});
+
 test('a fresh all-PASS receipt with existing artifacts completes the task', () => {
   const root = tmpDataRoot();
   const cwd = tmpProjectDir();

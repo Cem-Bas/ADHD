@@ -3,7 +3,7 @@ import { runHook } from './common/hook.mjs';
 import { classifyPrompt, detectHyperfocus, isMachinePromptSource, isSystemEnvelope } from './common/controls.mjs';
 import { loadPreferences } from './common/prefs.mjs';
 import { mutateSession, archiveTask } from './common/store.mjs';
-import { startTask, appendUserTurn, setMode, cancelTask, closeReplaced, createDegradedTask } from './common/session.mjs';
+import { startTask, appendUserTurn, setMode, cancelTask, closeReplaced, createDegradedTask, markLastTurn } from './common/session.mjs';
 import { isOpenPhase } from './common/schema.mjs';
 import { transition } from './common/statemachine.mjs';
 import { normalizeCwd } from './common/paths.mjs';
@@ -51,13 +51,15 @@ function handlePrompt({ input, sessionId, dataRoot, pluginRoot, now }) {
         if (open) {
           if (args !== '') appendUserTurn(record, { text: args, receivedAt: now });
           setMode(record, 'hyperfocus', now);
+          markLastTurn(record, 'user');
           return { result: renderTaskLockProtocol({ record, ...render, full: true }) };
         }
         if (args !== '') return begin(record, args, 'hyperfocus');
         record.extensions = { version: 1, ...record.extensions, pendingMode: 'hyperfocus' };
         return { result: renderControlContext({ command, args, record, ...render, hasTask: false }) };
       default:
-        return { skipSave: true, result: renderControlContext({ command, args, record, ...render, hasTask: open }) };
+        if (open) markLastTurn(record, 'control');
+        return { skipSave: !open, result: renderControlContext({ command, args, record, ...render, hasTask: open }) };
     }
   };
 
