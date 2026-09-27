@@ -5,9 +5,11 @@ These cases exercise the failure modes the plugin targets: answering a nearby qu
 ## Running
 
 ```bash
-claude plugin eval . --runs 5 --no-publish        # all cases, with and without the plugin
-claude plugin eval . --case adhd-hyperfocus-depth  # one case
+claude plugin eval . --runs 5 --no-publish --allow-tools "Write,Edit,Bash(node *)"   # all cases, with and without the plugin
+claude plugin eval . --case adhd-hyperfocus-depth --no-publish                          # one case (research only)
 ```
+
+Three cases (`adhd-omitted-deliverable`, `adhd-correction-retention`, `adhd-unsupported-refusal`) ask Claude to create files. The eval runner gates `Write`, `Edit`, and `Bash` behind an operator grant, so pass `--allow-tools "Write,Edit,Bash(node *)"` when running them; without the grant their `file_exists` graders fail by design. The `Bash(node *)` grant lets the plugin's own `state.mjs` commands run inside the evaluated session.
 
 Each run is a real Claude Code session on your own account; the whole corpus at five runs per case is at least 80 sessions (8 cases × 5 runs × with/without arms) and costs real tokens. The release target is at least 50 runs across the scenarios with results recorded together with the Claude Code and model versions used.
 

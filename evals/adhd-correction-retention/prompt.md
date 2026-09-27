@@ -5,6 +5,7 @@ tags: [task-lock, correction]
 runs: 5
 max_turns: 40
 timeout_seconds: 600
+allowed_tools: ["Write", "Edit", "Bash(node *)"]
 ---
 
 Create hello.txt containing hi. Correction before you start: name the file greeting.txt instead, same content.

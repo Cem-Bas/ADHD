@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Please do not open a public issue for security problems. Email the maintainer listed in `.claude-plugin/plugin.json` (or use the repository's private vulnerability reporting if enabled) with a description, reproduction steps, and the affected version. You will receive an acknowledgement within seven days.
+Please do not open a public issue for security problems. Use the repository's private vulnerability reporting (GitHub → Security → Report a vulnerability) or contact the maintainer named in `.claude-plugin/plugin.json` through GitHub, with a description, reproduction steps, and the affected version. You will receive an acknowledgement within seven days.
 
 ## Threat model in one paragraph
 
