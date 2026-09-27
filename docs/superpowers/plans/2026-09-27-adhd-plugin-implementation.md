@@ -885,7 +885,8 @@ git commit -m "feat: add validated data paths and atomic filesystem helpers"
 
 **Interfaces:**
 - Consumes: `AdhdError`.
-- Produces: `LOCK_STALE_MS` (300000), `pidAlive(pid)`, `ownerInfo()`, `lockIsStale(owner, { now, hostname, isAlive })`, `isStaleLockDir(lockDir, opts)`, `recoverStaleLock(lockDir, diagnosticsDir)`, `acquireLock(lockDir, { timeoutMs, pollMs, diagnosticsDir })` → `{ release(), recoveredStale }`, `releaseLock(lockDir)`, `withLock(lockDir, fn, opts)`.
+- Produces: `LOCK_STALE_MS` (300000), `pidAlive(pid)`, `ownerInfo()`, `readOwner(lockDir)`, `sameOwner(a, b)`, `lockIsStale(owner, { now, hostname, isAlive })`, `inspectLockDir(lockDir, opts)` → `{ stale, owner }`, `isStaleLockDir(lockDir, opts)`, `recoverStaleLock(lockDir, diagnosticsDir, expectedOwner)` → `{ recovered, error }`, `acquireLock(lockDir, { timeoutMs, pollMs, diagnosticsDir })` → `{ owner, recoveredStale, verify(), release() }`, `releaseLock(lockDir)`, `withLock(lockDir, fn, opts)` (calls `fn(lock)`).
+- Revision after the Task 3 review (recorded in the SDD ledger): recovery is identity-checked — it renames only the exact stale owner it judged, restores the directory if it moved a different owner, and reports `{ recovered, error }` instead of swallowing failures; `release()` removes the directory only while this process still owns it; `verify()` throws `AdhdError('LOCK_LOST')` when ownership changed, and the store calls it immediately before every atomic save. The code below is the original brief; the corrected module is in `scripts/common/lock.mjs`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2595,7 +2596,7 @@ export function mutateSession(root, sessionId, fn, { create = null, now = Date.n
   const paths = dataPaths(root);
   ensureDir(paths.sessions);
   ensureDir(paths.diagnostics);
-  return withLock(lockDirFor(root, sessionId), () => {
+  return withLock(lockDirFor(root, sessionId), (lock) => {
     const loaded = loadSession(root, sessionId);
     let record;
     if (loaded.status === 'ok') record = loaded.record;
@@ -2605,6 +2606,7 @@ export function mutateSession(root, sessionId, fn, { create = null, now = Date.n
     const next = outcome.record || record;
     if (outcome.skipSave) return { status: 'ok', record: next, result: outcome.result, loaded: loaded.status };
     next.updatedAt = new Date(now).toISOString();
+    lock.verify();
     saveSession(root, next);
     return { status: 'ok', record: next, result: outcome.result, loaded: loaded.status };
   }, { timeoutMs: lockTimeoutMs, diagnosticsDir: paths.diagnostics });
