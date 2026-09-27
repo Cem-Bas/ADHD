@@ -146,7 +146,7 @@ Retention: finished session records are deleted 30 days after they finish (prefe
 - Every ordinary request is audited before Claude may finish, which adds one subagent call per completed task (two or more when repairs happen).
 - Claude Code has no per-agent wall-clock timeout. Researchers and the auditor are limited to 12 turns; the 120-second budget is an instruction in their prompts.
 - The auditor's Bash access is limited to the `state.mjs audit-record` command by instruction and by its tool list, not by a permission rule.
-- Prompts injected by the system (scheduled wakeups, loop wakeups, background-task notifications) are not part of the task ledger and never consume repair cycles.
+- Prompts injected by the system are not part of the task ledger and never consume repair cycles. The hook recognises them by source (anything other than `user`, `sdk`, or no source: scheduled wakeups, loop wakeups, `system`, `poll_event`) or by text: a prompt made only of `<task-notification>`, `<system-reminder>`, or `[SYSTEM NOTIFICATION` envelopes, which is how Claude Code delivers a finished background subagent even though it labels the source `user`. A message that adds your own words around such an envelope is an ordinary user turn.
 - Behavioural targets (Task Lock validity, correction retention, Hyperfocus citation coverage) are measured with the evaluation corpus in `evals/`, not guaranteed.
 
 ## Measured latency

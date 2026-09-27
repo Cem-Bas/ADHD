@@ -27,7 +27,23 @@ export function detectHyperfocus(prompt) {
 }
 
 export const MACHINE_SOURCES = new Set(['loop_wakeup', 'schedule_wakeup', 'system', 'poll_event']);
+const HUMAN_SOURCES = new Set(['user', 'sdk']);
+const ENVELOPE_PATTERNS = [/<task-notification>[\s\S]*?<\/task-notification>/gi, /<system-reminder>[\s\S]*?<\/system-reminder>/gi];
+const SYSTEM_NOTIFICATION_RE = /^\[SYSTEM NOTIFICATION/i;
+
+export function isHumanPromptSource(source) {
+  return source === undefined || source === null || HUMAN_SOURCES.has(source);
+}
 
 export function isMachinePromptSource(source) {
-  return MACHINE_SOURCES.has(source);
+  return !isHumanPromptSource(source);
+}
+
+export function isSystemEnvelope(prompt) {
+  const text = typeof prompt === 'string' ? prompt.trim() : '';
+  if (text === '') return false;
+  let rest = text;
+  for (const pattern of ENVELOPE_PATTERNS) rest = rest.replace(pattern, '');
+  rest = rest.trim();
+  return rest === '' || SYSTEM_NOTIFICATION_RE.test(rest);
 }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { tmpDataRoot, tmpProjectDir, runHook, promptInput, readSession, sessionFilePath, runScript, SCRIPTS } from '../helpers.mjs';
+import { tmpDataRoot, tmpProjectDir, runHook, runState, promptInput, stopInput, readSession, sessionFilePath, runScript, passingReceipt, SCRIPTS, TASK_NOTIFICATION } from '../helpers.mjs';
 
 const ctx = (text) => text.hookSpecificOutput.additionalContext;
 
@@ -115,6 +115,43 @@ test('machine-injected prompts are never captured but keep the protocol visible'
   const wake = runHook('prompt', root, promptInput({ prompt: 'background task finished', source: 'system' }));
   assert.ok(ctx(wake.json).includes('injected by the system'));
   assert.equal(readSession(root, 'sess-test-1').userTurns.length, 0);
+});
+
+test('a background task notification delivered with source "user" is not captured and keeps the receipt fresh', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  runHook('prompt', root, promptInput({ prompt: 'Create a file named smoke.txt containing exactly the line: hello adhd', cwd }));
+  const before = readSession(root, 'sess-test-1');
+  assert.equal(runState(root, 'audit-record', { args: ['--session', 'sess-test-1'], input: passingReceipt(before) }).json.accepted, true);
+  const notice = runHook('prompt', root, promptInput({ prompt: TASK_NOTIFICATION, source: 'user', cwd }));
+  assert.equal(notice.status, 0);
+  assert.ok(ctx(notice.json).includes('injected by the system'));
+  assert.equal(ctx(notice.json).includes('TASK LOCK\nGoal:'), false);
+  const after = readSession(root, 'sess-test-1');
+  assert.equal(after.userTurns.length, 0);
+  assert.equal(after.contractVersion, before.contractVersion);
+  assert.equal(after.audit.nonce, before.audit.nonce);
+  assert.equal(after.phase, 'ACTIVE');
+  const stop = runHook('stop', root, stopInput({ cwd, lastAssistantMessage: 'Done.' }));
+  assert.equal(stop.json.decision, undefined);
+  assert.match(stop.json.systemMessage, /COMPLETE/);
+  assert.equal(readSession(root, 'sess-test-1').phase, 'COMPLETE');
+});
+
+test('a machine-source prompt that reads "stop" or "/adhd:cancel" neither cancels nor controls the task', () => {
+  const root = tmpDataRoot();
+  runHook('prompt', root, promptInput({ prompt: 'real task' }));
+  const before = readSession(root, 'sess-test-1');
+  const wake = runHook('prompt', root, promptInput({ prompt: 'stop', source: 'loop_wakeup' }));
+  assert.ok(ctx(wake.json).includes('injected by the system'));
+  const cron = runHook('prompt', root, promptInput({ prompt: '/adhd:cancel', source: 'schedule_wakeup' }));
+  assert.ok(ctx(cron.json).includes('injected by the system'));
+  assert.equal(ctx(cron.json).includes('CANCELLED'), false);
+  const record = readSession(root, 'sess-test-1');
+  assert.deepEqual([record.phase, record.userTurns.length, record.contractVersion, record.audit.nonce], ['ACTIVE', 0, before.contractVersion, before.audit.nonce]);
+  const idle = tmpDataRoot();
+  assert.equal(runHook('prompt', idle, promptInput({ prompt: TASK_NOTIFICATION, source: 'user' })).stdout, '');
+  assert.equal(fs.existsSync(sessionFilePath(idle, 'sess-test-1')), false);
 });
 
 test('whitespace-only prompts, malformed input, and invalid session ids are ignored without output', () => {

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyPrompt, detectHyperfocus, isMachinePromptSource } from '../../scripts/common/controls.mjs';
+import { classifyPrompt, detectHyperfocus, isMachinePromptSource, isHumanPromptSource, isSystemEnvelope } from '../../scripts/common/controls.mjs';
+import { TASK_NOTIFICATION } from '../helpers.mjs';
 
 test('control commands are recognised with args and surrounding whitespace', () => {
   assert.deepEqual(classifyPrompt('/adhd:status'), { kind: 'control', command: 'status', args: '' });
@@ -37,4 +38,35 @@ test('hyperfocus detection uses unambiguous phrases only', () => {
 test('machine prompt sources are identified', () => {
   for (const s of ['loop_wakeup', 'schedule_wakeup', 'system', 'poll_event']) assert.equal(isMachinePromptSource(s), true);
   for (const s of ['user', 'sdk', undefined]) assert.equal(isMachinePromptSource(s), false);
+});
+
+test('only user, sdk, and an absent source are human; any other source is machine', () => {
+  for (const s of ['user', 'sdk', undefined, null]) {
+    assert.equal(isHumanPromptSource(s), true, String(s));
+    assert.equal(isMachinePromptSource(s), false, String(s));
+  }
+  for (const s of ['loop_wakeup', 'schedule_wakeup', 'system', 'poll_event', 'task_notification', 'some_future_source']) {
+    assert.equal(isHumanPromptSource(s), false, s);
+    assert.equal(isMachinePromptSource(s), true, s);
+  }
+});
+
+test('a prompt made only of system envelopes is a system envelope; prose around one is not', () => {
+  assert.ok(TASK_NOTIFICATION.startsWith('<task-notification>') && TASK_NOTIFICATION.endsWith('</task-notification>'));
+  assert.equal(isSystemEnvelope(TASK_NOTIFICATION), true);
+  assert.equal(isSystemEnvelope(`\n  ${TASK_NOTIFICATION}\n\n${TASK_NOTIFICATION}\n`), true);
+  assert.equal(isSystemEnvelope(`${TASK_NOTIFICATION}\n<system-reminder>\nThe file was modified.\n</system-reminder>`), true);
+  assert.equal(isSystemEnvelope('<system-reminder>\nremember the ledger\n</system-reminder>'), true);
+  assert.equal(isSystemEnvelope('[SYSTEM NOTIFICATION - NOT USER INPUT] The background shell "npm test" finished with exit code 0.'), true);
+  assert.equal(isSystemEnvelope('[system notification - not user input]\nlower-case marker'), true);
+  assert.equal(isSystemEnvelope(`${TASK_NOTIFICATION}\n[SYSTEM NOTIFICATION - NOT USER INPUT] and a notice`), true);
+  assert.equal(isSystemEnvelope(`please also add tests\n${TASK_NOTIFICATION}`), false);
+  assert.equal(isSystemEnvelope(`${TASK_NOTIFICATION}\nthanks, now ship it`), false);
+  assert.equal(isSystemEnvelope('fix the bug [SYSTEM NOTIFICATION - NOT USER INPUT] later'), false);
+  assert.equal(isSystemEnvelope('<task-notification>unterminated'), false);
+  assert.equal(isSystemEnvelope('do the thing'), false);
+  assert.equal(isSystemEnvelope('stop'), false);
+  assert.equal(isSystemEnvelope(''), false);
+  assert.equal(isSystemEnvelope('   '), false);
+  assert.equal(isSystemEnvelope(undefined), false);
 });

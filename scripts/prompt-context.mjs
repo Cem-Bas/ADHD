@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { runHook } from './common/hook.mjs';
-import { classifyPrompt, detectHyperfocus, isMachinePromptSource } from './common/controls.mjs';
+import { classifyPrompt, detectHyperfocus, isMachinePromptSource, isSystemEnvelope } from './common/controls.mjs';
 import { loadPreferences } from './common/prefs.mjs';
 import { mutateSession, archiveTask } from './common/store.mjs';
 import { startTask, appendUserTurn, setMode, cancelTask, closeReplaced, createDegradedTask } from './common/session.mjs';
@@ -21,7 +21,7 @@ function handlePrompt({ input, sessionId, dataRoot, pluginRoot, now }) {
   if (classified.kind === 'ordinary' && classified.text.trim() === '') return null;
   const cwd = normalizeCwd(input.cwd);
   const prefs = loadPreferences(dataRoot, cwd);
-  const machine = isMachinePromptSource(input.source);
+  const machine = isMachinePromptSource(input.source) || isSystemEnvelope(input.prompt);
   const transcriptPath = typeof input.transcript_path === 'string' ? input.transcript_path : null;
   const create = { cwd, transcriptPath, preferencesSnapshot: prefs.effective, retentionDays: prefs.effective.retentionDays };
   const render = { prefs, pluginRoot, dataRoot };
@@ -64,13 +64,13 @@ function handlePrompt({ input, sessionId, dataRoot, pluginRoot, now }) {
   const apply = (record) => {
     const open = isOpenPhase(record.phase);
     if (transcriptPath) record.transcriptPath = transcriptPath;
+    if (machine) return { skipSave: true, result: open ? renderTaskLockProtocol({ record, ...render, full: false, machineTurn: true }) : null };
     if (classified.kind === 'control') return applyControl(record, open);
     if (classified.kind === 'cancel') {
       if (!open) return { skipSave: true, result: null };
       cancelTask(record, now);
       return { result: renderCancelledContext({ record }) };
     }
-    if (machine) return { skipSave: true, result: open ? renderTaskLockProtocol({ record, ...render, full: false, machineTurn: true }) : null };
     if (classified.kind === 'replace') {
       if (open) closeReplaced(record, now);
       if (classified.text === '') {

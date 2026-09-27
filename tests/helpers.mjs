@@ -93,6 +93,22 @@ export function writeSession(root, record) {
   fs.writeFileSync(sessionFilePath(root, record.sessionId), JSON.stringify(record));
 }
 
+// Verbatim head of a Claude Code background-task notification captured in the 0.1.0 smoke run
+// (task-18 artifact 16-smoke-session-record-pretty.json, userTurns[0]); the <result> body is trimmed.
+export const TASK_NOTIFICATION = [
+  '<task-notification>',
+  '<task-id>a89ef8d812b59caa7</task-id>',
+  '<tool-use-id>toolu_019MbE9jqwdnuksvyNm84eMc</tool-use-id>',
+  '<output-file>/private/tmp/claude-501/-private-var-folders-16-27kytcts04n0p6mf-072fnrm0000gn-T-tmp-vclz8RmXVq/ef734862-20ab-4fa8-a94d-13fe86d10d1a/tasks/a89ef8d812b59caa7.output</output-file>',
+  '<status>completed</status>',
+  '<summary>Agent "Audit ADHD task contract" finished</summary>',
+  '<result>I need to stop here and report rather than attempt to bypass this.',
+  '',
+  '**Bash access has been denied by the permission system** when I tried to run the required `audit-record` command.</result>',
+  '<usage><subagent_tokens>30803</subagent_tokens><tool_uses>2</tool_uses><duration_ms>31773</duration_ms></usage>',
+  '</task-notification>',
+].join('\n');
+
 export function passingReceipt(record, overrides = {}) {
   return {
     taskId: record.taskId,
