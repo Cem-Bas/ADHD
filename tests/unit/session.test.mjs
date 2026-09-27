@@ -1,0 +1,132 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { newSessionRecord, validateSessionRecord } from '../../scripts/common/schema.mjs';
+import { startTask, appendUserTurn, setMode, cancelTask, closeReplaced, recordToolEvent, declareArtifacts, addResearchEvidence, auditFreshness, recordAuditReceipt, evaluateStop, receiptCoverage, trackAgent, createDegradedTask, computeEvidenceDigest } from '../../scripts/common/session.mjs';
+import { summarizeToolEvent } from '../../scripts/common/evidence.mjs';
+import { passingReceipt } from '../helpers.mjs';
+
+const now = Date.parse('2026-09-27T10:00:00Z');
+const fresh = (text = 'Build "x" with $(echo) and\nnewlines 日本語') => startTask(newSessionRecord({ sessionId: 's', cwd: '/p', now }), { text, receivedAt: now, preferencesSnapshot: { repairCycles: 6, retentionDays: 30 } });
+const bashEvent = (id, exitCode = 0, command = 'npm test') => summarizeToolEvent({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_use_id: id, tool_input: { command }, tool_response: { stdout: '', exitCode } }, { now });
+const exists = new Set(['/p/README.md']);
+const fileExists = (p) => exists.has(p.replace(/\\/g, '/'));
+
+test('startTask preserves the prompt verbatim and produces a valid ACTIVE record', () => {
+  const record = fresh();
+  assert.equal(record.originalRequest.text, 'Build "x" with $(echo) and\nnewlines 日本語');
+  assert.equal(record.phase, 'ACTIVE');
+  assert.equal(record.contractVersion, 1);
+  assert.match(record.taskId, /^t[a-z0-9]{15}$/);
+  assert.match(record.audit.nonce, /^[0-9a-f]{32}$/);
+  assert.deepEqual(validateSessionRecord(record), { ok: true, errors: [] });
+});
+
+test('user turns are appended in order, bump the contract, and rotate the nonce', () => {
+  const record = fresh();
+  const nonce = record.audit.nonce;
+  const digest = record.requestDigest;
+  appendUserTurn(record, { text: 'also add tests', receivedAt: now + 1 });
+  appendUserTurn(record, { text: 'actually, no tests', receivedAt: now + 2 });
+  assert.deepEqual(record.userTurns.map((t) => [t.sequence, t.text]), [[1, 'also add tests'], [2, 'actually, no tests']]);
+  assert.equal(record.contractVersion, 3);
+  assert.notEqual(record.requestDigest, digest);
+  assert.notEqual(record.audit.nonce, nonce);
+  assert.equal(record.originalRequest.text.startsWith('Build "x"'), true);
+});
+
+test('receipts must bind to task, version, digest, and nonce', () => {
+  const record = fresh();
+  assert.equal(recordAuditReceipt(record, passingReceipt(record, { nonce: 'ffff' }), now).reason, 'NONCE_MISMATCH');
+  assert.equal(recordAuditReceipt(record, passingReceipt(record, { contractVersion: 9 }), now).reason, 'CONTRACT_VERSION_MISMATCH');
+  assert.equal(recordAuditReceipt(record, passingReceipt(record, { taskId: 'tother' }), now).reason, 'TASK_MISMATCH');
+  assert.equal(recordAuditReceipt(record, passingReceipt(record, { items: [] }), now).reason, 'INVALID_RECEIPT');
+  assert.equal(recordAuditReceipt(record, passingReceipt(record, { items: [{ id: 'R1', requirement: 'x', status: 'PARTIAL' }] }), now).reason, 'INVALID_RECEIPT');
+  const ok = recordAuditReceipt(record, passingReceipt(record), now);
+  assert.equal(ok.ok, true);
+  assert.deepEqual(auditFreshness(record), { fresh: true, reason: 'fresh' });
+  const old = passingReceipt(record);
+  appendUserTurn(record, { text: 'more', receivedAt: now + 5 });
+  assert.equal(auditFreshness(record).reason, 'nonce');
+  assert.equal(recordAuditReceipt(record, old, now).reason, 'NONCE_MISMATCH');
+  const other = fresh();
+  assert.equal(recordAuditReceipt(other, passingReceipt(record), now).reason, 'TASK_MISMATCH');
+});
+
+test('mutating tool events stale a receipt; Agent events and receipts themselves do not', () => {
+  const record = fresh();
+  recordAuditReceipt(record, passingReceipt(record), now);
+  recordToolEvent(record, summarizeToolEvent({ hook_event_name: 'PostToolUse', tool_name: 'Agent', tool_use_id: 'a1', tool_input: { subagent_type: 'adhd:contract-auditor' }, tool_response: 'ok' }, { now }), now);
+  assert.equal(auditFreshness(record).fresh, true);
+  recordToolEvent(record, bashEvent('b1'), now);
+  assert.equal(auditFreshness(record).reason, 'evidence');
+  assert.equal(record.audit.invalidatedAt !== null, true);
+  recordAuditReceipt(record, passingReceipt(record), now + 1);
+  assert.equal(auditFreshness(record).fresh, true);
+});
+
+test('evaluateStop reports every deterministic gap and passes only when clean', () => {
+  const record = fresh();
+  assert.deepEqual(evaluateStop(record, { cwd: '/p', fileExists }).gaps.map((g) => g.code), ['AUDIT_MISSING']);
+  recordToolEvent(record, bashEvent('good', 0), now);
+  recordToolEvent(record, bashEvent('bad', 1, 'npm run lint'), now);
+  declareArtifacts(record, [{ path: 'README.md', purpose: 'docs' }, { path: 'missing.md' }], now);
+  recordAuditReceipt(record, passingReceipt(record, {
+    taskLockValid: false, taskLockIssues: ['invented deliverable'],
+    items: [
+      { id: 'R1', requirement: 'readme', status: 'PASS', evidence: [{ type: 'artifact', path: 'README.md' }, { type: 'command', toolUseId: 'good' }] },
+      { id: 'R2', requirement: 'lint', status: 'PASS', evidence: [{ type: 'command', toolUseId: 'bad' }] },
+      { id: 'R3', requirement: 'deploy', status: 'BLOCKED', gap: 'needs credentials' },
+      { id: 'R4', requirement: 'tests', status: 'PARTIAL', gap: 'no tests for x' },
+      { id: 'R5', requirement: 'ghost', status: 'PASS', evidence: [{ type: 'command', toolUseId: 'nope' }] },
+    ],
+  }), now);
+  const result = evaluateStop(record, { cwd: '/p', fileExists });
+  assert.equal(result.pass, false);
+  assert.deepEqual(result.gaps.map((g) => g.code).sort(), ['ARTIFACT_MISSING', 'COMMAND_FAILED', 'COMMAND_FAILED', 'ITEM_BLOCKED', 'ITEM_PARTIAL', 'TASKLOCK_INVALID']);
+  assert.deepEqual(receiptCoverage(record), { passed: 3, total: 5 });
+  const clean = fresh();
+  declareArtifacts(clean, [{ path: 'README.md' }], now);
+  recordAuditReceipt(clean, passingReceipt(clean), now);
+  assert.deepEqual(evaluateStop(clean, { cwd: '/p', fileExists }), { pass: true, gaps: [] });
+});
+
+test('hyperfocus mode requires a ledger that satisfies the support rules', () => {
+  const record = fresh('deep research on x');
+  setMode(record, 'hyperfocus', now);
+  assert.equal(record.mode, 'hyperfocus');
+  recordAuditReceipt(record, passingReceipt(record), now);
+  assert.deepEqual(evaluateStop(record, { cwd: '/p', fileExists }).gaps.map((g) => g.code), ['HYPERFOCUS_EMPTY']);
+  const source = { url: 'https://a.gov/x', title: 'A', publisher: 'Agency', publicationDate: '2026-01-01', accessedAt: '2026-09-27T00:00:00Z', sourceType: 'primary', evidenceChainId: 'a', relation: 'supports' };
+  addResearchEvidence(record, { claims: [{ claimId: 'c1', text: 't', class: 'core', stability: 'stable', controversy: 'undisputed', confidence: 'moderate', rationale: 'r', sources: [source] }, { claimId: 'c2', text: 'u', class: 'core', stability: 'stable', controversy: 'disputed', confidence: 'moderate', rationale: 'r', sources: [source] }] });
+  assert.equal(auditFreshness(record).reason, 'evidence');
+  recordAuditReceipt(record, passingReceipt(record), now);
+  const gaps = evaluateStop(record, { cwd: '/p', fileExists }).gaps;
+  assert.deepEqual(gaps.map((g) => [g.code, g.itemId]), [['HYPERFOCUS_UNSUPPORTED', 'c2']]);
+  assert.equal(record.evidence.sources.length, 1);
+  assert.throws(() => addResearchEvidence(record, { claims: [{ claimId: 'bad' }] }), /INVALID_EVIDENCE|text required/);
+});
+
+test('cancel, replace, agent tracking, and degraded task creation', () => {
+  const record = fresh();
+  trackAgent(record, { hook_event_name: 'SubagentStart', agent_id: 'ag1', agent_type: 'adhd:source-researcher' }, now);
+  trackAgent(record, { hook_event_name: 'SubagentStop', agent_id: 'ag1', agent_type: 'adhd:source-researcher' }, now + 10);
+  assert.equal(record.evidence.agents[0].stoppedAt, new Date(now + 10).toISOString());
+  cancelTask(record, now);
+  assert.equal(record.phase, 'CANCELLED');
+  const replaced = fresh();
+  closeReplaced(replaced, now);
+  assert.deepEqual([replaced.phase, replaced.closure.reason], ['CANCELLED', 'replaced']);
+  const degraded = createDegradedTask(newSessionRecord({ sessionId: 's', cwd: '/p', now }), { reason: 'state corrupted', now });
+  assert.equal(degraded.phase, 'DEGRADED_REPORT_REQUIRED');
+  assert.match(degraded.originalRequest.text, /state corrupted/);
+  assert.equal(validateSessionRecord(degraded).ok, true);
+});
+
+test('tool event list is capped and drop count recorded; evidence digest ignores dropped history', () => {
+  const record = fresh();
+  for (let i = 0; i < 505; i += 1) recordToolEvent(record, bashEvent(`u${i}`), now);
+  assert.equal(record.evidence.toolEvents.length, 500);
+  assert.equal(record.evidence.dropped.toolEvents, 5);
+  assert.equal(record.evidence.commands.length, 500);
+  assert.equal(typeof computeEvidenceDigest(record), 'string');
+});
