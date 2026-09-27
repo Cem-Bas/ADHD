@@ -105,6 +105,8 @@ Skills (`skills/*/SKILL.md`) provide the `/adhd:*` commands; agents (`agents/*.m
 
 Fail-open means the session is never trapped: malformed hook input, corrupted state, a missing transcript, a stuck lock, or an exception all end as a visible `DEGRADED_STOP` (never as a completion claim) or `CANCELLED`. The Stop hook issues at most seven consecutive blocks, below Claude Code's own cap of eight.
 
+The auditor records its receipt by running `node <plugin>/scripts/state.mjs audit-record`. In an interactive session approve that Bash command when prompted (choosing "always allow" for `node` avoids repeats); in non-interactive runs pass `--allowedTools "Bash(node *)"`. Without that permission the audit cannot be recorded and the task ends as `BOUNDED_STOP` after six repairs.
+
 ## Stored data
 
 Durable data lives only in the plugin data directory Claude Code assigns (`~/.claude/plugins/data/adhd-adhd-local/` for the local marketplace; `~/.claude/plugins/data/adhd-local/` when loaded with `--plugin-dir`). Nothing is sent to any third-party backend; the researcher and auditor subagents are ordinary Claude Code subagents in your own session.

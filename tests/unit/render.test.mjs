@@ -21,6 +21,10 @@ test('full protocol carries the verbatim ledger, the Task Lock block, the audito
   assert.ok(text.includes('subagent_type "adhd:contract-auditor"'));
   assert.ok(text.includes('node "/plugins/adhd root/scripts/state.mjs" audit-record --data "/data/adhd" --session "sess-1"'));
   assert.ok(text.includes('artifact-declare --data'));
+  assert.ok(text.includes("Pass the JSON as a single-quoted here-string: <command> <<< '<receipt json>' — escape any single quote inside the JSON as '\\''. Do not use a heredoc."));
+  assert.equal(text.includes('heredoc is fine'), false);
+  assert.ok(text.includes('"taskLockValid":"<true | false>"'));
+  assert.equal(text.includes('"taskLockValid":true'), false);
   assert.ok(text.includes('"Stop doing X and do Y" is an amendment'));
   assert.ok(text.includes('Changed: <previous requirement> -> <corrected requirement>'));
   assert.ok(text.includes('Blocked action:'));
