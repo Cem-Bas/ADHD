@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { newSessionRecord } from '../../scripts/common/schema.mjs';
 import { startTask, appendUserTurn, setMode, recordAuditReceipt } from '../../scripts/common/session.mjs';
 import { defaultPreferences } from '../../scripts/common/prefs.mjs';
@@ -10,6 +11,8 @@ const now = Date.parse('2026-09-27T10:00:00Z');
 const prefs = { effective: defaultPreferences(), sources: Object.fromEntries(Object.keys(defaultPreferences()).map((k) => [k, 'default'])) };
 const ctx = { prefs, pluginRoot: '/plugins/adhd root', dataRoot: '/data/adhd' };
 const make = (text = 'Build "x"\nwith $(sub) and 日本語') => startTask(newSessionRecord({ sessionId: 'sess-1', cwd: '/p', now }), { text, receivedAt: now });
+// The rendered command quotes the script path for a POSIX shell, so a win32 path.join result has its backslashes doubled.
+const scriptPath = (pluginRoot) => path.join(pluginRoot, 'scripts', 'state.mjs').replace(/\\/g, '\\\\');
 
 test('full protocol carries the verbatim ledger, the Task Lock block, the auditor prompt with nonce, and exact commands', () => {
   const record = make();
@@ -19,7 +22,7 @@ test('full protocol carries the verbatim ledger, the Task Lock block, the audito
   assert.ok(text.includes('NOW: <the single current action>'));
   assert.ok(text.includes(`Audit nonce: ${record.audit.nonce}`));
   assert.ok(text.includes('subagent_type "adhd:contract-auditor"'));
-  assert.ok(text.includes('node "/plugins/adhd root/scripts/state.mjs" audit-record --data "/data/adhd" --session "sess-1"'));
+  assert.ok(text.includes(`node "${scriptPath(ctx.pluginRoot)}" audit-record --data "/data/adhd" --session "sess-1"`));
   assert.ok(text.includes('artifact-declare --data'));
   assert.ok(text.includes("Pass the JSON as a single-quoted here-string: <command> <<< '<receipt json>' — escape any single quote inside the JSON as '\\''. Do not use a heredoc."));
   assert.equal(text.includes('heredoc is fine'), false);
@@ -92,7 +95,7 @@ test('restore context names the source, the receipt state, and open gaps', () =>
 });
 
 test('stateCommand quotes paths and statusSummary exposes the machine state', () => {
-  assert.equal(stateCommand({ pluginRoot: '/a b', dataRoot: '/d"q', sessionId: 's', subcommand: 'status' }), 'node "/a b/scripts/state.mjs" status --data "/d\\"q" --session "s"');
+  assert.equal(stateCommand({ pluginRoot: '/a b', dataRoot: '/d"q', sessionId: 's', subcommand: 'status' }), `node "${scriptPath('/a b')}" status --data "/d\\"q" --session "s"`);
   const record = make();
   const summary = statusSummary(record);
   assert.deepEqual(Object.keys(summary.repair), ['completed', 'maximum', 'blocksIssued']);

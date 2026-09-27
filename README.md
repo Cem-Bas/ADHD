@@ -18,7 +18,7 @@ Every ordinary request you type becomes a task contract that the plugin stores v
 ## Requirements
 
 - Claude Code 2.1.271 or later (built and tested against 2.1.283).
-- Node.js 20.11 or later on your `PATH`; the hooks run `node` directly with no shell, so no Bash, `jq`, or PowerShell is needed. Tested on Node 20, 22, and 24.
+- Node.js 20.11 or later on your `PATH`; the hooks run `node` directly with no shell, so no Bash, `jq`, or PowerShell is needed. Developed and tested locally on Node 24 (macOS); the CI matrix (macOS, Ubuntu, Windows × Node 20 and 22) is configured in `.github/workflows/ci.yml` and had not yet run at the time of the 0.1.0 release record.
 - macOS, Linux, or Windows.
 
 ## Install
