@@ -31,8 +31,7 @@ test('uncaptured tools, subagent tool activity, and sessions without state are i
   assert.equal(readSession(root, 'sess-test-1').evidence.toolEvents.length, 0);
 });
 
-// un-skipped in Task 13 when scripts/state.mjs exists
-test.skip('mutating tool events stale a fresh receipt but Agent events and subagent tracking do not', () => {
+test('mutating tool events stale a fresh receipt but Agent events and subagent tracking do not', () => {
   const root = tmpDataRoot();
   runHook('prompt', root, promptInput({ prompt: 'work' }));
   let record = readSession(root, 'sess-test-1');

@@ -28,7 +28,7 @@ export function validatePreference(key, raw) {
     if (raw === false || raw === 'false') return { ok: true, value: false };
     return { ok: false, error: `${key} must be true or false` };
   }
-  const number = typeof raw === 'number' ? raw : Number(raw);
+  const number = typeof raw === 'number' ? raw : typeof raw === 'string' && /^-?\d+$/.test(raw.trim()) ? Number(raw.trim()) : NaN;
   if (!Number.isInteger(number) || number < def.min || number > def.max) return { ok: false, error: `${key} must be an integer between ${def.min} and ${def.max}` };
   return { ok: true, value: number };
 }

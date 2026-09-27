@@ -18,6 +18,10 @@ test('validation coerces strings and rejects out-of-range values', () => {
   assert.equal(validatePreference('retentionDays', 366).ok, false);
   assert.equal(validatePreference('outputDetail', 'loud').ok, false);
   assert.equal(validatePreference('nope', 1).ok, false);
+  assert.equal(validatePreference('repairCycles', '').ok, false);
+  assert.equal(validatePreference('repairCycles', null).ok, false);
+  assert.equal(validatePreference('repairCycles', [3]).ok, false);
+  assert.deepEqual(validatePreference('repairCycles', ' 4 '), { ok: true, value: 4 });
 });
 
 test('project overrides win over global which win over defaults, and sources say so', () => {
