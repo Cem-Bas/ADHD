@@ -1,0 +1,5 @@
+node_modules/
+evals/results/
+*.log
+.DS_Store
+*.tmp-*

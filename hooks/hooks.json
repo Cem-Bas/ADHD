@@ -1,0 +1,94 @@
+{
+  "description": "ADHD: captures every ordinary request verbatim, restores task state after resume/compaction, records tool evidence, and gates completion behind a contract audit with bounded repair.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/restore-context.mjs", "--data", "${CLAUDE_PLUGIN_DATA}"],
+            "timeout": 10,
+            "statusMessage": "ADHD: restoring task state"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/prompt-context.mjs", "--data", "${CLAUDE_PLUGIN_DATA}"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|WebFetch|WebSearch|Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/evidence-capture.mjs", "--data", "${CLAUDE_PLUGIN_DATA}"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|WebFetch|WebSearch|Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/evidence-capture.mjs", "--data", "${CLAUDE_PLUGIN_DATA}"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/evidence-capture.mjs", "--data", "${CLAUDE_PLUGIN_DATA}"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/evidence-capture.mjs", "--data", "${CLAUDE_PLUGIN_DATA}"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/stop-check.mjs", "--data", "${CLAUDE_PLUGIN_DATA}"],
+            "timeout": 30,
+            "statusMessage": "ADHD: verifying task contract"
+          }
+        ]
+      }
+    ]
+  }
+}

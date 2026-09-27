@@ -1,0 +1,15 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "adhd-local",
+  "description": "Local marketplace for the ADHD Claude Code plugin (repository root).",
+  "owner": { "name": "Cem Bas" },
+  "plugins": [
+    {
+      "name": "adhd",
+      "source": "./",
+      "description": "Task Lock, progress visibility, Hyperfocus research, boundary review, and audited completion for Claude Code.",
+      "version": "0.1.0",
+      "category": "productivity"
+    }
+  ]
+}
