@@ -44,7 +44,8 @@ test('migration accepts v1, rejects newer and unknown versions', () => {
 });
 
 test('phase helpers agree with the phase list', () => {
-  assert.equal(PHASES.length, 13);
+  assert.equal(PHASES.length, 14);
+  assert.equal(isOpenPhase('DEGRADED_REPORT_REQUIRED'), true);
   assert.equal(isOpenPhase('REPAIR_3'), true);
   assert.equal(isOpenPhase('REPORT_REQUIRED'), true);
   assert.equal(isOpenPhase('IDLE'), false);

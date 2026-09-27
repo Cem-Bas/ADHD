@@ -1,7 +1,7 @@
 export const SCHEMA_VERSION = 1;
 export const REPAIR_PHASES = ['REPAIR_1', 'REPAIR_2', 'REPAIR_3', 'REPAIR_4', 'REPAIR_5', 'REPAIR_6'];
 export const TERMINAL_PHASES = ['COMPLETE', 'BOUNDED_STOP', 'DEGRADED_STOP', 'CANCELLED'];
-export const OPEN_PHASES = ['ACTIVE', ...REPAIR_PHASES, 'REPORT_REQUIRED'];
+export const OPEN_PHASES = ['ACTIVE', ...REPAIR_PHASES, 'REPORT_REQUIRED', 'DEGRADED_REPORT_REQUIRED'];
 export const PHASES = ['IDLE', ...OPEN_PHASES, ...TERMINAL_PHASES];
 export const MODES = ['standard', 'hyperfocus'];
 export const MAX_SESSION_BYTES = 2 * 1024 * 1024;
