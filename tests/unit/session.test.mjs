@@ -138,6 +138,19 @@ test('receipts are rejected once the task is closed, and the record stays valid'
   assert.equal(validateSessionRecord(record).ok, true);
 });
 
+test('startTask consumes a pending mode request and keeps the extensions valid', () => {
+  const record = newSessionRecord({ sessionId: 's', cwd: '/p', now });
+  record.extensions.pendingMode = 'hyperfocus';
+  startTask(record, { text: 'x', receivedAt: now, mode: 'hyperfocus' });
+  assert.equal('pendingMode' in record.extensions, false);
+  assert.equal(record.extensions.version, 1);
+  assert.deepEqual(validateSessionRecord(record), { ok: true, errors: [] });
+  const bare = newSessionRecord({ sessionId: 's2', cwd: '/p', now });
+  delete bare.extensions;
+  startTask(bare, { text: 'y', receivedAt: now });
+  assert.equal(validateSessionRecord(bare).ok, true);
+});
+
 test('startTask clamps the repair budget and both startTask and setMode reject unknown modes', () => {
   const high = startTask(newSessionRecord({ sessionId: 's', cwd: '/p', now }), { text: 'x', receivedAt: now, preferencesSnapshot: { repairCycles: 9 } });
   const low = startTask(newSessionRecord({ sessionId: 's', cwd: '/p', now }), { text: 'x', receivedAt: now, preferencesSnapshot: { repairCycles: -3 } });

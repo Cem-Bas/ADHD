@@ -26,7 +26,7 @@ function handlePrompt({ input, sessionId, dataRoot, pluginRoot, now }) {
   const create = { cwd, transcriptPath, preferencesSnapshot: prefs.effective, retentionDays: prefs.effective.retentionDays };
   const render = { prefs, pluginRoot, dataRoot };
   const taskOptions = (text, mode) => ({ text, receivedAt: now, mode, transcriptPath, preferencesSnapshot: prefs.effective, retentionDays: prefs.effective.retentionDays });
-  const chooseMode = (record, text) => (detectHyperfocus(text) || record.mode === 'hyperfocus' || prefs.effective.researchDepth === 'hyperfocus' ? 'hyperfocus' : 'standard');
+  const chooseMode = (record, text) => (detectHyperfocus(text) || record.extensions?.pendingMode === 'hyperfocus' || prefs.effective.researchDepth === 'hyperfocus' ? 'hyperfocus' : 'standard');
   const begin = (record, text, mode) => {
     if (record.taskId) archiveTask(dataRoot, record);
     startTask(record, taskOptions(text, mode));
@@ -54,7 +54,7 @@ function handlePrompt({ input, sessionId, dataRoot, pluginRoot, now }) {
           return { result: renderTaskLockProtocol({ record, ...render, full: true }) };
         }
         if (args !== '') return begin(record, args, 'hyperfocus');
-        record.mode = 'hyperfocus';
+        record.extensions = { version: 1, ...record.extensions, pendingMode: 'hyperfocus' };
         return { result: renderControlContext({ command, args, record, ...render, hasTask: false }) };
       default:
         return { skipSave: true, result: renderControlContext({ command, args, record, ...render, hasTask: open }) };

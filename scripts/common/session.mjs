@@ -38,6 +38,7 @@ export function startTask(record, { text, receivedAt, mode = 'standard', transcr
   record.contractVersion = 1;
   if (!MODES.includes(mode)) throw new AdhdError('INVALID_MODE', `mode must be one of ${MODES.join(', ')}`);
   record.mode = mode;
+  if (record.extensions) delete record.extensions.pendingMode;
   record.originalRequest = { text, receivedAt: iso(receivedAt) };
   record.userTurns = [];
   record.evidence = emptyEvidence();

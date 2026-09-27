@@ -95,6 +95,29 @@ test('control commands are not captured; new/hyperfocus/cancel apply their opera
   assert.ok(ctx(contract.json).includes('compare databases'));
 });
 
+test('Hyperfocus does not stick to the next task; a bare /adhd:hyperfocus applies once, to the next request', () => {
+  const root = tmpDataRoot();
+  runHook('prompt', root, promptInput({ prompt: 'deep research on caching' }));
+  assert.equal(readSession(root, 'sess-test-1').mode, 'hyperfocus');
+  runHook('prompt', root, promptInput({ prompt: 'cancel' }));
+  runHook('prompt', root, promptInput({ prompt: 'fix the typo' }));
+  let record = readSession(root, 'sess-test-1');
+  assert.deepEqual([record.originalRequest.text, record.mode, record.phase], ['fix the typo', 'standard', 'ACTIVE']);
+  runHook('prompt', root, promptInput({ prompt: 'cancel' }));
+  const pending = runHook('prompt', root, promptInput({ prompt: '/adhd:hyperfocus' }));
+  assert.ok(ctx(pending.json).includes('next request'));
+  record = readSession(root, 'sess-test-1');
+  assert.deepEqual([record.extensions.pendingMode, record.extensions.version, record.mode, record.phase], ['hyperfocus', 1, 'standard', 'CANCELLED']);
+  runHook('prompt', root, promptInput({ prompt: 'compare databases' }));
+  record = readSession(root, 'sess-test-1');
+  assert.deepEqual([record.originalRequest.text, record.mode, record.phase], ['compare databases', 'hyperfocus', 'ACTIVE']);
+  assert.equal('pendingMode' in record.extensions, false);
+  assert.equal(record.extensions.version, 1);
+  runHook('prompt', root, promptInput({ prompt: 'cancel' }));
+  runHook('prompt', root, promptInput({ prompt: 'one more standard task' }));
+  assert.equal(readSession(root, 'sess-test-1').mode, 'standard');
+});
+
 test('hyperfocus phrases and the researchDepth preference select the mode', () => {
   const root = tmpDataRoot();
   runHook('prompt', root, promptInput({ prompt: 'please do deep research on caching' }));
