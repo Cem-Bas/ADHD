@@ -67,11 +67,14 @@ test('skills exist for every command, are named after their directory, and are u
     const { fields, body } = frontmatter(path.join(dir, name, 'SKILL.md'));
     assert.equal(fields.name, name);
     assert.ok(fields.description.includes(`/adhd:${name}`), `${name} description names its command`);
-    assert.notEqual(fields['user-invocable'], 'false');
+    if (name === 'prefs' || name === 'data') assert.match(fields['allowed-tools'], new RegExp(`^Bash\\(node \\*scripts/state\\.mjs ${name} \\*\\)$`), `${name} restricts Bash to its state.mjs subcommand`);
+    else assert.equal(fields['allowed-tools'], undefined, `${name} declares no allowed-tools`);
     assert.ok(body.trim().length > 100);
   }
   assert.equal(frontmatter(path.join(dir, 'why', 'SKILL.md')).fields['disable-model-invocation'], undefined);
   for (const name of expected.filter((n) => n !== 'why')) assert.equal(frontmatter(path.join(dir, name, 'SKILL.md')).fields['disable-model-invocation'], 'true');
   assert.ok(frontmatter(path.join(dir, 'data', 'SKILL.md')).body.includes('delete all adhd data'));
   assert.ok(frontmatter(path.join(dir, 'hyperfocus', 'SKILL.md')).body.includes('adhd:source-researcher'));
+  assert.ok(frontmatter(path.join(dir, 'data', 'SKILL.md')).body.includes('delete project <projectKey>'));
+  assert.ok(frontmatter(path.join(REPO_ROOT, 'agents', 'contract-auditor.md')).body.includes('auditorModel'));
 });
