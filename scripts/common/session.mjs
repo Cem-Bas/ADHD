@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { randomTaskId, randomNonce, digestOf } from './ids.mjs';
 import { emptyEvidence, MAX_TOOL_EVENTS, MAX_REPAIRS, MODES, isOpenPhase } from './schema.mjs';
-import { transition } from './statemachine.mjs';
+import { transition, repairIndex } from './statemachine.mjs';
 import { MUTATING_TOOLS } from './evidence.mjs';
 import { validateClaim, validateUnresolved, assessLedger } from './ledger.mjs';
 import { AdhdError } from './errors.mjs';
@@ -68,6 +68,7 @@ export function invalidateAudit(record, at) {
 }
 
 export function appendUserTurn(record, { text, receivedAt }) {
+  if (repairIndex(record.phase) > 0 || record.phase === 'REPORT_REQUIRED') transition(record, 'ACTIVE', { now: receivedAt });
   record.userTurns.push({ sequence: record.userTurns.length + 1, text, receivedAt: iso(receivedAt) });
   markLastTurn(record, 'user');
   record.contractVersion += 1;

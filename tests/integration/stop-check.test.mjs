@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { tmpDataRoot, tmpProjectDir, runHook, runState, promptInput, stopInput, toolInput, readSession, writeSession, sessionFilePath, passingReceipt } from '../helpers.mjs';
+import { tmpDataRoot, tmpProjectDir, runHook, runState, promptInput, stopInput, toolInput, readSession, writeSession, sessionFilePath, passingReceipt, TASK_NOTIFICATION } from '../helpers.mjs';
 
 const BOUNDED = 'ADHD BOUNDED STOP REPORT\nUnresolved items: a\nEvidence gathered: b\nExact blocker: c\nSmallest next action: d';
 const DEGRADED = 'ADHD DEGRADED STOP REPORT\nVerification failure: x\nWork completed without verification: y\nSmallest next action: z';
@@ -144,6 +144,37 @@ test('six failed repairs lead to one bounded-report request, then BOUNDED_STOP; 
   record = readSession(root, 'sess-test-1');
   assert.deepEqual([record.phase, record.closure.reason], ['BOUNDED_STOP', 'bounded']);
   assert.equal(runHook('stop', root, stopInput({ cwd })).stdout, '');
+});
+
+test('a user turn during a repair cycle returns the task to ACTIVE and restarts the repair budget; machine and control turns do not', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  begin(root, cwd);
+  runHook('stop', root, stopInput({ cwd }));
+  runHook('stop', root, stopInput({ cwd, stopHookActive: true }));
+  let record = readSession(root, 'sess-test-1');
+  assert.deepEqual([record.phase, record.repair.completed, record.repair.blocksIssued], ['REPAIR_2', 2, 2]);
+  runHook('prompt', root, promptInput({ prompt: TASK_NOTIFICATION, source: 'user', cwd }));
+  runHook('prompt', root, promptInput({ prompt: '/adhd:status', cwd }));
+  record = readSession(root, 'sess-test-1');
+  assert.deepEqual([record.phase, record.repair.completed, record.userTurns.length], ['REPAIR_2', 2, 0]);
+  const reply = runHook('prompt', root, promptInput({ prompt: 'the API key is in .env.local', cwd }));
+  assert.ok(reply.json.hookSpecificOutput.additionalContext.includes('the newest user turn above amends this task'));
+  record = readSession(root, 'sess-test-1');
+  assert.deepEqual([record.phase, record.repair.completed, record.repair.blocksIssued, record.repair.gaps, record.userTurns.length, record.contractVersion], ['ACTIVE', 0, 0, [], 1, 2]);
+  const next = runHook('stop', root, stopInput({ cwd, lastAssistantMessage: 'done' })).json;
+  assert.equal(next.decision, 'block');
+  assert.ok(next.reason.startsWith('[ADHD] REPAIR 1 of 6'));
+  assert.ok(next.reason.includes('a reply from the user restarts the repair budget'));
+  const other = tmpDataRoot();
+  begin(other, cwd);
+  for (let i = 0; i < 7; i += 1) runHook('stop', other, stopInput({ cwd, stopHookActive: i > 0 }));
+  assert.equal(readSession(other, 'sess-test-1').phase, 'REPORT_REQUIRED');
+  runHook('prompt', other, promptInput({ prompt: 'use the staging credentials instead', cwd }));
+  const restarted = readSession(other, 'sess-test-1');
+  assert.deepEqual([restarted.phase, restarted.repair.completed, restarted.repair.blocksIssued, restarted.repair.gaps], ['ACTIVE', 0, 0, []]);
+  assert.equal(runHook('stop', other, stopInput({ cwd })).json.decision, 'block');
+  assert.equal(readSession(other, 'sess-test-1').phase, 'REPAIR_1');
 });
 
 test('a malformed or absent bounded report ends as DEGRADED_STOP instead of looping', () => {

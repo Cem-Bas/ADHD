@@ -62,6 +62,27 @@ test('returning to ACTIVE resets the repair counters, and a missing preferences 
   assert.equal(bare.expiresAt, new Date(now + 30 * 86_400_000).toISOString());
 });
 
+test('a user turn may return any repair phase or REPORT_REQUIRED to ACTIVE, which resets the counters', () => {
+  for (const phase of ['REPAIR_1', 'REPAIR_3', 'REPAIR_6', 'REPORT_REQUIRED']) assert.equal(canTransition(phase, 'ACTIVE'), true, phase);
+  assert.equal(canTransition('REPAIR_2', 'ACTIVE', 2), true);
+  assert.equal(canTransition('ACTIVE', 'ACTIVE'), false);
+  assert.equal(canTransition('DEGRADED_REPORT_REQUIRED', 'ACTIVE'), false);
+  const record = newSessionRecord({ sessionId: 's', cwd: '/p', now });
+  transition(record, 'ACTIVE', { now });
+  for (const phase of ['REPAIR_1', 'REPAIR_2', 'REPAIR_3']) transition(record, phase, { now });
+  record.repair.blocksIssued = 3;
+  record.repair.gaps = [{ code: 'AUDIT_MISSING', detail: 'x' }];
+  transition(record, 'ACTIVE', { now: now + 1 });
+  assert.deepEqual([record.phase, record.repair.completed, record.repair.blocksIssued, record.repair.gaps], ['ACTIVE', 0, 0, []]);
+  assert.equal(record.updatedAt, new Date(now + 1).toISOString());
+  assert.equal(nextPhaseAfterFailedEvaluation(record.phase), 'REPAIR_1');
+  transition(record, 'REPAIR_1', { now });
+  for (let i = 0; i < 6; i += 1) transition(record, nextPhaseAfterFailedEvaluation(record.phase), { now });
+  assert.equal(record.phase, 'REPORT_REQUIRED');
+  transition(record, 'ACTIVE', { now });
+  assert.deepEqual([record.phase, record.repair.completed], ['ACTIVE', 0]);
+});
+
 test('a lowered repair budget reaches REPORT_REQUIRED from its last allowed repair phase', () => {
   assert.equal(canTransition('REPAIR_2', 'REPORT_REQUIRED', 2), true);
   assert.equal(canTransition('REPAIR_2', 'REPAIR_3', 2), false);

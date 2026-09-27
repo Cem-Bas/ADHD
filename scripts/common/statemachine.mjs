@@ -19,13 +19,15 @@ export function nextPhaseAfterFailedEvaluation(phase, maximum = MAX_REPAIRS) {
 
 export function allowedTransitions(from, maximum = MAX_REPAIRS) {
   if (from === 'IDLE' || TERMINAL_PHASES.includes(from)) return ['ACTIVE'];
-  if (from === 'REPORT_REQUIRED') return ['BOUNDED_STOP', 'DEGRADED_STOP', 'CANCELLED'];
+  if (from === 'REPORT_REQUIRED') return ['BOUNDED_STOP', 'DEGRADED_STOP', 'CANCELLED', 'ACTIVE'];
   if (from === 'DEGRADED_REPORT_REQUIRED') return ['DEGRADED_STOP', 'CANCELLED'];
   const index = repairIndex(from);
   if (index === -1) return [];
   const cap = Math.min(Math.max(0, maximum), MAX_REPAIRS);
   const next = index >= cap ? 'REPORT_REQUIRED' : REPAIR_PHASES[index];
-  return ['COMPLETE', next, 'CANCELLED', 'DEGRADED_REPORT_REQUIRED', 'DEGRADED_STOP'];
+  const allowed = ['COMPLETE', next, 'CANCELLED', 'DEGRADED_REPORT_REQUIRED', 'DEGRADED_STOP'];
+  if (index > 0) allowed.push('ACTIVE');
+  return allowed;
 }
 
 export function canTransition(from, to, maximum = MAX_REPAIRS) {

@@ -65,6 +65,8 @@ test('repair and bounded-report instructions list gaps and the report detectors 
   assert.ok(repair.startsWith('[ADHD] REPAIR 2 of 6'));
   assert.ok(repair.includes('1. [ITEM_PARTIAL] R2 "tests" — no tests for x'));
   assert.ok(repair.includes(record.audit.nonce));
+  assert.ok(repair.includes('have the auditor mark that item BLOCKED and ask the user your single question; the plugin pauses the task when every remaining gap is BLOCKED, and a reply from the user restarts the repair budget.'));
+  assert.equal(repair.includes('pauses the task instead of repairing'), false);
   const bounded = renderBoundedReportInstruction({ record, gaps });
   assert.ok(bounded.includes(BOUNDED_REPORT_HEADING));
   assert.ok(bounded.includes('Smallest next action:'));

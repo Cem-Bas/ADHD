@@ -210,7 +210,7 @@ export function renderRepairInstruction({ record, gaps, pluginRoot, dataRoot }) 
     formatGaps(gaps),
     'Auditor invocation (Agent tool, subagent_type "adhd:contract-auditor"):',
     fence(auditorInvocation({ record, pluginRoot, dataRoot }).prompt),
-    'Do not claim completion until every item is PASS. If a gap depends on a fact only the user can supply, ask that one question and stop; the plugin pauses the task instead of repairing.',
+    'Do not claim completion until every item is PASS. If a gap depends on a fact only the user can supply, have the auditor mark that item BLOCKED and ask the user your single question; the plugin pauses the task when every remaining gap is BLOCKED, and a reply from the user restarts the repair budget.',
   ].join('\n');
 }
 
