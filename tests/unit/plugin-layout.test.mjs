@@ -58,3 +58,20 @@ test('manifests agree on the version and the hooks config is exec-form only', ()
     assert.ok(fs.existsSync(path.join(REPO_ROOT, hook.args[0].replace('${CLAUDE_PLUGIN_ROOT}/', ''))));
   }
 });
+
+test('skills exist for every command, are named after their directory, and are user-invocable', () => {
+  const dir = path.join(REPO_ROOT, 'skills');
+  const expected = ['cancel', 'contract', 'data', 'hyperfocus', 'new', 'prefs', 'status', 'why'];
+  assert.deepEqual(fs.readdirSync(dir).sort(), expected);
+  for (const name of expected) {
+    const { fields, body } = frontmatter(path.join(dir, name, 'SKILL.md'));
+    assert.equal(fields.name, name);
+    assert.ok(fields.description.includes(`/adhd:${name}`), `${name} description names its command`);
+    assert.notEqual(fields['user-invocable'], 'false');
+    assert.ok(body.trim().length > 100);
+  }
+  assert.equal(frontmatter(path.join(dir, 'why', 'SKILL.md')).fields['disable-model-invocation'], undefined);
+  for (const name of expected.filter((n) => n !== 'why')) assert.equal(frontmatter(path.join(dir, name, 'SKILL.md')).fields['disable-model-invocation'], 'true');
+  assert.ok(frontmatter(path.join(dir, 'data', 'SKILL.md')).body.includes('delete all adhd data'));
+  assert.ok(frontmatter(path.join(dir, 'hyperfocus', 'SKILL.md')).body.includes('adhd:source-researcher'));
+});
