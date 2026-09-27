@@ -11,7 +11,7 @@ const SECRET_PATTERNS = [
   /\bAKIA[0-9A-Z]{16}\b/g,
   /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g,
   /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g,
-  /\bbearer\s+[A-Za-z0-9._~+/=-]{8,}/gi,
+  /\bbearer\s+(?=[A-Za-z0-9._~+/=-]*[0-9._~+/=-])[A-Za-z0-9._~+/=-]{10,}/gi,
   /\b(?:token|password|passwd|pwd|secret|api[_-]?key|access[_-]?key)\b\s*[:=]\s*["']?[^\s"']{6,}/gi,
 ];
 
@@ -72,7 +72,7 @@ export function summarizeToolEvent(input, { now = Date.now(), maxBytes = MAX_TOO
   const failure = input.hook_event_name === 'PostToolUseFailure';
   const toolInput = input.tool_input && typeof input.tool_input === 'object' ? input.tool_input : {};
   const response = failure ? input.error : input.tool_response;
-  const exitStatus = failure ? null : extractExitStatus(response);
+  const exitStatus = extractExitStatus(response);
   return {
     toolUseId: String(input.tool_use_id || ''),
     toolName: String(input.tool_name || ''),

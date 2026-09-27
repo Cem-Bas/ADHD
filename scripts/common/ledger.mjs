@@ -28,7 +28,7 @@ export function validateSource(source) {
 export function validateClaim(claim) {
   const errors = [];
   if (!claim || typeof claim !== 'object') return { ok: false, errors: ['claim must be an object'] };
-  if (!ID_RE.test(String(claim.claimId))) errors.push(`claimId must match ${ID_RE.source}`);
+  if (typeof claim.claimId !== 'string' || !ID_RE.test(claim.claimId)) errors.push(`claimId must be a string matching ${ID_RE.source}`);
   if (!nonEmpty(claim.text)) errors.push('text required');
   if (!CLAIM_CLASSES.includes(claim.class)) errors.push('class must be core, supporting, or background');
   if (!STABILITIES.includes(claim.stability)) errors.push('stability must be stable or unstable');
@@ -48,7 +48,7 @@ export function validateUnresolved(item) {
   if (!nonEmpty(item.question)) errors.push('question required');
   if (!nonEmpty(item.missingEvidence)) errors.push('missingEvidence required');
   if (!nonEmpty(item.effectOnConclusion)) errors.push('effectOnConclusion required');
-  if (item.claimId !== undefined && !ID_RE.test(String(item.claimId))) errors.push('claimId malformed');
+  if (item.claimId !== undefined && (typeof item.claimId !== 'string' || !ID_RE.test(item.claimId))) errors.push('claimId malformed');
   return { ok: errors.length === 0, errors };
 }
 

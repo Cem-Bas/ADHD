@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateClaim, chainKeys, assessClaim, assessLedger, computeConfidence } from '../../scripts/common/ledger.mjs';
+import { validateClaim, validateUnresolved, chainKeys, assessClaim, assessLedger, computeConfidence } from '../../scripts/common/ledger.mjs';
 
 const src = (over = {}) => ({ url: 'https://a.gov/x', title: 'A', publisher: 'Agency A', publicationDate: '2026-01-01', accessedAt: '2026-09-27T00:00:00Z', sourceType: 'primary', evidenceChainId: 'a', relation: 'supports', ...over });
 const claim = (over = {}) => ({ claimId: 'c1', text: 'X is true', class: 'core', stability: 'stable', controversy: 'undisputed', confidence: 'moderate', rationale: 'because', sources: [src()], ...over });
@@ -44,4 +44,12 @@ test('confidence and ledger assessment', () => {
   const result = assessLedger([claim(), claim({ claimId: 'c2', sources: [] })], []);
   assert.equal(result.adequate, false);
   assert.deepEqual(result.gaps.map((g) => g.claimId), ['c2']);
+});
+
+test('a claim or unresolved item without a string claimId is rejected', () => {
+  assert.equal(validateClaim(claim({ claimId: undefined })).ok, false);
+  assert.equal(validateClaim(claim({ claimId: null })).ok, false);
+  assert.equal(validateClaim(claim({ claimId: 42 })).ok, false);
+  assert.equal(validateUnresolved({ claimId: null, question: 'q', missingEvidence: 'm', effectOnConclusion: 'e' }).ok, false);
+  assert.equal(validateUnresolved({ question: 'q', missingEvidence: 'm', effectOnConclusion: 'e' }).ok, true);
 });

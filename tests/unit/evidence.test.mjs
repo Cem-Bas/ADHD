@@ -47,3 +47,12 @@ test('summarizeToolEvent covers success, failure, and agent metadata', () => {
   assert.equal(MUTATING_TOOLS.has('Agent'), false);
   assert.equal(MUTATING_TOOLS.has('Bash'), true);
 });
+
+test('failure events keep a recoverable exit status, and Bearer redaction leaves prose alone', () => {
+  const failed = summarizeToolEvent({ hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_use_id: 'u9', tool_input: { command: 'npm test' }, error: 'Command failed. Exit code: 1' }, { now: 0 });
+  assert.deepEqual([failed.ok, failed.exitStatus], [false, 1]);
+  assert.equal(redact('Bearer certificates were issued to the vendor'), 'Bearer certificates were issued to the vendor');
+  assert.equal(redact('Authorization: Bearer abc.def.ghi').includes('abc.def.ghi'), false);
+  assert.equal(redact('Bearer x1y2z3w4v5u6t7').includes('x1y2z3'), false);
+  assert.equal(redact('Bearer bonds'), 'Bearer bonds');
+});
