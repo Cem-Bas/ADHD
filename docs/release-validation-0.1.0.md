@@ -46,10 +46,12 @@ Full per-test output was captured to
 Command: `claude plugin validate . --strict`
 
 ```
-Validating marketplace manifest: /Users/cembas/git/ADHD/.claude-plugin/marketplace.json
+Validating marketplace manifest: <repo-root>/.claude-plugin/marketplace.json
 
 ✔ Validation passed
 ```
+
+(`<repo-root>` stands for this machine's real absolute path to the repository; redacted here — see "Package inspection" below for why that redaction matters and how it was re-checked.)
 
 ## Measured latency
 
@@ -75,24 +77,50 @@ Raw output: `.superpowers/sdd/2026-09-27-adhd-plugin-implementation/task-18-arti
 
 ## Package inspection
 
-Commands (from the brief, run against `git ls-files`):
+Commands (from the brief, run against `git ls-files`): list every tracked
+file; grep them for absolute paths under a personal home directory on
+macOS, Linux, or Windows; grep them for four common secret-key shapes; and
+list which paths `git status` reports as ignored. The home-directory-path
+regex is given in full in the task brief's Step 2; it is paraphrased in
+prose below rather than reproduced literally in this file, because Fix
+round 1 found that this record had reproduced a real instance of exactly
+that pattern elsewhere (see "Strict validation" above) — a file whose job is
+to prove no such pattern exists should not itself contain the pattern.
 
 ```
 git ls-files
-git ls-files | xargs grep -n -E '(/Users/|/home/[a-z]+/|C:\\Users)' || echo "no local paths"
 git ls-files | xargs grep -n -E '(sk-[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|BEGIN [A-Z ]*PRIVATE KEY)' || echo "no secrets"
 git status --short --ignored | grep -E '^!!' | head
 ```
 
 - **Tracked files:** 98 (`git ls-files`).
-- **Local-path grep:** matched only inside `docs/superpowers/plans/2026-09-27-adhd-plugin-implementation.md` (design-plan prose that quotes test code) and `tests/unit/paths.test.mjs` — the synthetic `/Users/x/proj` fixtures the brief names as expected, not real paths. **No occurrences of `/Users/cembas/` (or any other real local path) exist in any tracked file.**
-- **Secrets grep:** matched only inside `docs/superpowers/plans/2026-09-27-adhd-plugin-implementation.md` and `tests/unit/evidence.test.mjs` — synthetic, sequential-alphabet placeholder credentials (`AKIAABCDEFGHIJKLMNOP`, `ghp_abcdefghijklmnopqrstuvwxyz0123`, `sk-ant-api03-abcdefghijklmnopqrstuvwxyz`, and a fabricated JWT) that exist specifically as fixtures for the evidence-redaction unit test (`redact()` is asserted to strip them). No real secret material was found anywhere in the tracked tree.
+- **Local-path grep:** matched only inside `docs/superpowers/plans/2026-09-27-adhd-plugin-implementation.md` (design-plan prose that quotes test code) and `tests/unit/paths.test.mjs` — synthetic fixture paths of the form `<placeholder-home>/x/proj` (a fake home directory, not a real one) that the brief names as expected. **No occurrence of this machine's real absolute repository path, or any other real local filesystem path, exists in any tracked file** (see the re-check below, which now also covers this record and `README.md`).
+- **Secrets grep:** matched only inside `docs/superpowers/plans/2026-09-27-adhd-plugin-implementation.md` and `tests/unit/evidence.test.mjs` — synthetic fixtures in `tests/unit/evidence.test.mjs` (an AKIA-shaped key, a ghp_-shaped token, an sk-ant-shaped key, and a JWT-shaped token) that exist to test the redactor (`redact()` is asserted to strip them); the design-plan file quotes the same test code. No real secret material was found anywhere in the tracked tree. (The literal fixture strings are not reproduced in this file, for the same self-referential reason given above — they would themselves look like a secrets-grep hit.)
 - **`.superpowers/` ignore check:** `git status --short --ignored` reports `!! .superpowers/` — the whole tree is already ignored, via an untracked `.superpowers/sdd/.gitignore` containing a single `*` (not the root `.gitignore`). **No change to the root `.gitignore` was needed**, and none was made.
 - **Generated state / transcripts:** none tracked. The only transcript-shaped file in the package is the deliberate fixture `tests/fixtures/transcripts/sample.jsonl`; there is no `sessions/` directory or other run-generated artifact in the repository.
+- **No git remote configured:** `git remote -v` produced no output, both when checked at the start of this task and again just now during this fix round.
+
+### Re-check: this record does not itself leak a local path
+
+Fix round 1's Critical finding was that this file had reproduced a real
+absolute path (the repository's real location on this machine) in the
+"Strict validation" section, contradicting the local-path-grep finding
+above. That occurrence was redacted to `<repo-root>`, and the phrasing in
+this section was rewritten so it no longer names the search pattern
+literally — a file whose job is to prove that pattern is absent should not
+itself contain it (doing so once already produced this fix round's Critical
+finding, and repeating the literal pattern inside this very re-check would
+reproduce the same problem one level down). So this re-check is reported by
+description rather than by quoting the command: the same absolute-home-
+directory-path search used in Step 2 (see the paraphrase above and the
+brief for the exact regex) was re-run against this file and `README.md`, in
+addition to the tracked tree. Result: no match in either file. Saved:
+`task-18-artifacts/21-local-path-recheck.txt`.
 
 Raw output:
 `.superpowers/sdd/2026-09-27-adhd-plugin-implementation/task-18-artifacts/05-ls-files.txt`,
-`06-local-paths.txt`, `07-secrets.txt`, `08-ignored.txt`.
+`06-local-paths.txt`, `07-secrets.txt`, `08-ignored.txt`, `21-git-remote.txt`,
+`21-local-path-recheck.txt`.
 
 ## Public commands and control coverage (Step 4)
 
@@ -121,7 +149,14 @@ All of the above are part of the 137/137 passing total in "Test results" above.
 ## Local install and smoke task (Step 3)
 
 Preflight: `claude plugin list` and `claude plugin marketplace list` showed no
-`adhd` or `adhd-local` entries before this task touched anything.
+`adhd` or `adhd-local` entries before this task touched anything (16 plugins
+across 2 marketplaces, plus the claude.ai directory entry). Not captured as a
+separate artifact; the baseline is corroborated by the post-install list (17
+entries) minus the adhd entry equalling the final list (16 entries) in
+`11-plugin-list-after-install.txt` and `19-plugin-list-final.txt` — both
+counts and the full 16-name sets were re-verified while writing this fix
+(`grep -c "❯"` on each file: 17 and 16; the 16 names in the final list are
+exactly the 16 non-`adhd` names in the post-install list).
 
 ```
 claude plugin marketplace add "$(pwd)"     # -> Successfully added marketplace: adhd-local
@@ -193,7 +228,9 @@ and were not present in this piped capture):
 > script itself was never the problem.
 
 **Session record** (newest, and only, file under
-`~/.claude/plugins/data/adhd-adhd-local/sessions/`; copied to
+`~/.claude/plugins/data/adhd-adhd-local/sessions/` — observed in the shell
+via `ls -la`; no directory listing was saved, only the record itself, copied
+to
 `.superpowers/sdd/2026-09-27-adhd-plugin-implementation/task-18-artifacts/15-smoke-session-record.json`
 before uninstalling):
 
@@ -243,16 +280,17 @@ Each item is marked **met**, **measured**, or **pending-user-review**, with a po
 7. Boundary-response evaluations meet their rubric and do not suppress unaffected work — **pending-user-review**. Behavioral-eval criterion (`evals/adhd-genuine-restriction`, `evals/adhd-unsupported-refusal`); not run at release scale in this task.
 8. Global preferences, project overrides, session data, diagnostics, exports, retention, deletion behave as documented — **met**. `tests/unit/prefs.test.mjs` (4/4), `tests/unit/retention.test.mjs` (2/2), `tests/integration/state-cli.test.mjs` (8/8, incl. data show/export/delete-* with confirmation phrases), `tests/unit/store.test.mjs`, `tests/unit/schema.test.mjs` — all passing.
 9. Concurrent sessions and stale-lock recovery show no cross-session mutation or corrupted state — **met**. `tests/integration/concurrency.test.mjs` (4/4), `tests/integration/fault-paths.test.mjs` stale-lock test, `tests/unit/lock.test.mjs` (8/8) — all passing.
-10. Security, unit, integration, behavioral, strict validation, compatibility-matrix, and clean local-install checks pass — **measured**, with two named exceptions pending-user-review. Unit (87/87) and integration (50/50) met; security met (redaction unit tests plus this task's package-inspection grep found no real secrets or local paths); strict validation met (`claude plugin validate . --strict` passed); clean local-install met (Step 3). **Pending-user-review:** the behavioral corpus (not run at release scale), and the full OS compatibility matrix — `.github/workflows/ci.yml` defines ubuntu/macos/windows × node 20/22, but this task neither pushes nor creates a remote (`git remote -v` was empty throughout), so only the macOS arm64 / Node 24.7.0 leg was actually executed, today, locally; the Linux/Windows legs run once the user pushes.
+10. Security, unit, integration, behavioral, strict validation, compatibility-matrix, and clean local-install checks pass — **measured**, with two named exceptions pending-user-review. Unit (87/87) and integration (50/50) met; security met (redaction unit tests plus this task's package-inspection grep found no real secrets or local paths); strict validation met (`claude plugin validate . --strict` passed); clean local-install met (Step 3). **Pending-user-review:** the behavioral corpus (not run at release scale), and the full OS compatibility matrix — `.github/workflows/ci.yml` defines ubuntu/macos/windows × node 20/22, but this task neither pushes nor creates a remote (`git remote -v` produced no output, checked both at the start of this task and again during this fix round; `task-18-artifacts/21-git-remote.txt`), so only the macOS arm64 / Node 24.7.0 leg was actually executed, today, locally; the Linux/Windows legs run once the user pushes.
 11. Every fault-path fixture ends in visible `DEGRADED_STOP` or `CANCELLED`, never an unqualified completion claim — **met**. `tests/integration/fault-paths.test.mjs` "fault paths end in DEGRADED_STOP or CANCELLED, never COMPLETE" plus its other 4 tests, and the degraded-path tests in `stop-check.test.mjs` — all passing.
 12. Documentation accurately describes behavior, model-dependent limits, resource use, storage, data controls, removal — **met**. `README.md` (Stored data, Preferences, Limitations, Remove sections), `docs/architecture.md` (components, data flow, state machine, 12 documented deviations from spec with reasons), `SECURITY.md`.
-13. The user reviews the complete local package before public publication — **pending-user-review** (the purpose of this record). No GitHub repository, remote, or push was created or attempted at any point; `git remote -v` was empty throughout this task.
+13. The user reviews the complete local package before public publication — **pending-user-review** (the purpose of this record). No GitHub repository, remote, or push was created or attempted at any point; `git remote -v` produced no output, checked both at the start of this task and again during this fix round (`task-18-artifacts/21-git-remote.txt`).
 
 ## Known limitations and open items
 
 - **Behavioural evaluation corpus not yet run at release scale.** `evals/README.md` documents the release-scale command (`claude plugin eval . --runs 5 --no-publish`, ≥80 real sessions at real token cost) and the release targets (≥90% valid Task Locks, ≥90% contract coverage, 100% seeded-omission detection, 100% correction retention, Hyperfocus citation/date/contrary-evidence rubric, zero unqualified completions on fault paths). This task does not run it; acceptance criteria 2, 4, 5, 7, and part of 10 stay pending-user-review until it is.
 - **Cross-OS compatibility matrix not executed on real runners.** `.github/workflows/ci.yml` covers ubuntu-latest/macos-latest/windows-latest × Node 20/22 plus a strict-validate job, but only runs on push/PR; this task does not create a remote or push, so only today's local macOS arm64 / Node 24.7.0 run is first-hand evidence.
-- **Publication is pending user review** (spec acceptance criterion 13). Nothing was pushed; no GitHub repository or git remote was created; `claude plugin list` / `claude plugin marketplace list` were restored to exactly the state found before this task (no `adhd` or `adhd-local` entries).
+- **Publication is pending user review** (spec acceptance criterion 13). Nothing was pushed; no GitHub repository or git remote was created (`git remote -v` produced no output, both at the start of this task and re-checked during this fix round — `task-18-artifacts/21-git-remote.txt`); `claude plugin list` / `claude plugin marketplace list` were restored to exactly the state found before this task (no `adhd` or `adhd-local` entries).
+- **The one live smoke run needed two auditor attempts to record its receipt.** Its first `audit-record` invocations were stopped by a shell content filter on the quoted receipt JSON and then a Bash permission denial; the Stop hook blocked once (`REPAIR_1`), the repair cycle re-ran the auditor, and the receipt was accepted on the next attempt. The plugin behaved as designed — the Stop hook correctly detected the missing/invalid receipt and gave a targeted repair instruction rather than a false completion — but a more robust way for the auditor to pass the receipt (for example, a temp file instead of a heredoc) is a candidate improvement.
 
 ## HEAD movement
 
