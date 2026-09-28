@@ -11,7 +11,7 @@ The plugin treats prompts, transcripts, hook input, tool output, and its own sto
 ## What the plugin cannot protect against
 
 - A malicious or compromised model output that lies in a receipt: deterministic checks (artifacts exist, referenced commands succeeded, nonce and digest binding) reduce but do not eliminate this.
-- The main agent recording the receipt itself: the receipt is bound to the task, contract version, request digest, and nonce, but nothing cryptographic proves that the `adhd:contract-auditor` subagent, rather than the main agent that sees the same nonce, ran `state.mjs audit-record`. The auditor's independence is a separate context with read-only tools; the deterministic checks are the part that cannot be talked around.
+- The main agent recording the receipt itself: the receipt is bound to the task, contract version, request digest, and nonce, but nothing cryptographic proves that the `adhd:contract-auditor` subagent, rather than the main agent that sees the same nonce, ran `state.mjs audit-record`. The auditor's independence is a separate context with read-focused tools (Read, Grep, Glob) plus Bash for the single audit-record command; the deterministic checks are the part that cannot be talked around.
 - Other plugins or hooks with access to the same data directory.
 - Users who paste secrets into their prompts: the raw request is stored verbatim by design; use `/adhd:data delete-session` to remove it.
 
