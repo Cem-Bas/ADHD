@@ -167,6 +167,11 @@ export function renderTaskLockProtocol({ record, prefs, pluginRoot, dataRoot, fu
       `Wait for the auditor to report that the receipt was accepted, then finish. If you stop without a fresh PASS receipt, the Stop hook blocks and starts a repair cycle (maximum ${record.repair.maximum}). Never claim completion while any item is PARTIAL or BLOCKED.`,
       '8. CANCELLATION. Only /adhd:cancel, or an entire prompt of "cancel", "stop", "stop this task", or "cancel this task", cancels this task. "Stop doing X and do Y" is an amendment. Cancellation performs no cleanup or follow-on changes.',
     );
+  } else if (auditFreshness(record).fresh) {
+    parts.push(
+      '',
+      'ADHD protocol reminder: a fresh audit receipt is already recorded for this unchanged task. Do not launch another contract auditor. Finish this turn and let the Stop hook verify the recorded receipt.',
+    );
   } else {
     parts.push(
       '',

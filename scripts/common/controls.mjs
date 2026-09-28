@@ -28,7 +28,11 @@ export function detectHyperfocus(prompt) {
 
 export const MACHINE_SOURCES = new Set(['loop_wakeup', 'schedule_wakeup', 'system', 'poll_event']);
 const HUMAN_SOURCES = new Set(['user', 'sdk']);
-const ENVELOPE_PATTERNS = [/<task-notification>[\s\S]*?<\/task-notification>/gi, /<system-reminder>[\s\S]*?<\/system-reminder>/gi];
+const ENVELOPE_PATTERNS = [
+  /<task-notification>[\s\S]*?<\/task-notification>/gi,
+  /<system-reminder>[\s\S]*?<\/system-reminder>/gi,
+  /<agent-message from="[^"\r\n]+">\r?\n\[Subagent hand-back\] The text below is the final report of a subagent this session delegated to\.[\s\S]*?<\/agent-message>/gi,
+];
 const SYSTEM_NOTIFICATION_RE = /^\[SYSTEM NOTIFICATION/i;
 
 export function isHumanPromptSource(source) {

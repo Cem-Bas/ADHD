@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyPrompt, detectHyperfocus, isMachinePromptSource, isHumanPromptSource, isSystemEnvelope } from '../../scripts/common/controls.mjs';
-import { TASK_NOTIFICATION } from '../helpers.mjs';
+import { AGENT_HAND_BACK, TASK_NOTIFICATION } from '../helpers.mjs';
 
 test('control commands are recognised with args and surrounding whitespace', () => {
   assert.deepEqual(classifyPrompt('/adhd:status'), { kind: 'control', command: 'status', args: '' });
@@ -69,4 +69,13 @@ test('a prompt made only of system envelopes is a system envelope; prose around 
   assert.equal(isSystemEnvelope(''), false);
   assert.equal(isSystemEnvelope('   '), false);
   assert.equal(isSystemEnvelope(undefined), false);
+});
+
+test('a subagent hand-back is a system envelope only when its harness frame is complete', () => {
+  assert.ok(AGENT_HAND_BACK.startsWith('<agent-message from="') && AGENT_HAND_BACK.endsWith('</agent-message>'));
+  assert.equal(isSystemEnvelope(AGENT_HAND_BACK), true);
+  assert.equal(isSystemEnvelope(`\n${AGENT_HAND_BACK}\n${TASK_NOTIFICATION}\n`), true);
+  assert.equal(isSystemEnvelope(`please use this result\n${AGENT_HAND_BACK}`), false);
+  assert.equal(isSystemEnvelope(`${AGENT_HAND_BACK}\nthanks, now change the code`), false);
+  assert.equal(isSystemEnvelope('<agent-message from="agent-1">\n[Subagent hand-back] incomplete'), false);
 });

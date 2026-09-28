@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { tmpDataRoot, tmpProjectDir, runHook, runState, promptInput, stopInput, readSession, sessionFilePath, runScript, passingReceipt, SCRIPTS, TASK_NOTIFICATION } from '../helpers.mjs';
+import { tmpDataRoot, tmpProjectDir, runHook, runState, promptInput, stopInput, readSession, sessionFilePath, runScript, passingReceipt, SCRIPTS, AGENT_HAND_BACK, TASK_NOTIFICATION } from '../helpers.mjs';
 
 const ctx = (text) => text.hookSpecificOutput.additionalContext;
 
@@ -176,6 +176,28 @@ test('a background task notification delivered with source "user" is not capture
   assert.equal(stop.json.decision, undefined);
   assert.match(stop.json.systemMessage, /COMPLETE/);
   assert.equal(readSession(root, 'sess-test-1').phase, 'COMPLETE');
+});
+
+test('an auditor hand-back delivered with source "user" keeps the accepted receipt and does not request another audit', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  runHook('prompt', root, promptInput({ prompt: 'Explain how to solve the LRU problem', cwd }));
+  const before = readSession(root, 'sess-test-1');
+  assert.equal(runState(root, 'audit-record', { args: ['--session', 'sess-test-1'], input: passingReceipt(before) }).json.accepted, true);
+  const handBack = runHook('prompt', root, promptInput({ prompt: AGENT_HAND_BACK, source: 'user', cwd }));
+  assert.equal(handBack.status, 0);
+  assert.ok(ctx(handBack.json).includes('injected by the system'));
+  assert.ok(ctx(handBack.json).includes('fresh audit receipt'));
+  assert.equal(ctx(handBack.json).includes('re-run the completion audit'), false);
+  assert.equal(ctx(handBack.json).includes('You are the ADHD contract auditor'), false);
+  const after = readSession(root, 'sess-test-1');
+  assert.equal(after.userTurns.length, 0);
+  assert.equal(after.contractVersion, before.contractVersion);
+  assert.equal(after.audit.nonce, before.audit.nonce);
+  assert.equal(after.phase, 'ACTIVE');
+  const stop = runHook('stop', root, stopInput({ cwd, lastAssistantMessage: 'Done.' }));
+  assert.equal(stop.json.decision, undefined);
+  assert.match(stop.json.systemMessage, /COMPLETE/);
 });
 
 test('a machine-source prompt that reads "stop" or "/adhd:cancel" neither cancels nor controls the task', () => {
