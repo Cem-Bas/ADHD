@@ -27,7 +27,7 @@ test('normalizeCwd and projectKey are stable across slashes, trailing separators
 });
 
 test('every data path stays inside the root', () => {
-  const root = path.join(path.sep, 'tmp', 'adhd-root');
+  const root = path.resolve(path.sep, 'tmp', 'adhd-root');
   assert.equal(sessionFile(root, 'abc'), path.join(root, 'sessions', 'abc.json'));
   assert.equal(archivedTaskFile(root, 'abc', 't0123456789abcde'), path.join(root, 'sessions', 'abc.t0123456789abcde.json'));
   assert.equal(diagnosticsFile(root, 'abc'), path.join(root, 'diagnostics', 'abc.jsonl'));
@@ -38,7 +38,7 @@ test('every data path stays inside the root', () => {
 });
 
 test('dataPaths and lockDirFor point inside the root', () => {
-  const root = path.join(path.sep, 'tmp', 'adhd-root');
+  const root = path.resolve(path.sep, 'tmp', 'adhd-root');
   const paths = dataPaths(root);
   assert.equal(paths.root, root);
   assert.equal(paths.preferences, path.join(root, 'preferences.json'));

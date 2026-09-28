@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { REPO_ROOT } from '../helpers.mjs';
+import { REPO_ROOT, tmpDataRoot } from '../helpers.mjs';
 
 export function frontmatter(file) {
-  const text = fs.readFileSync(file, 'utf8');
+  const text = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
   const match = text.match(/^---\n([\s\S]*?)\n---\n/);
   assert.ok(match, `${file} has YAML frontmatter`);
   const fields = {};
@@ -77,4 +77,13 @@ test('skills exist for every command, are named after their directory, and are u
   assert.ok(frontmatter(path.join(dir, 'hyperfocus', 'SKILL.md')).body.includes('adhd:source-researcher'));
   assert.ok(frontmatter(path.join(dir, 'data', 'SKILL.md')).body.includes('delete project <projectKey>'));
   assert.ok(frontmatter(path.join(REPO_ROOT, 'agents', 'contract-auditor.md')).body.includes('auditorModel'));
+});
+
+test('frontmatter parsing tolerates CRLF line endings (Windows checkouts)', () => {
+  const dir = tmpDataRoot();
+  const file = path.join(dir, 'SKILL.md');
+  fs.writeFileSync(file, '---\r\nname: sample\r\ndescription: "A sample"\r\n---\r\n\r\nBody line.\r\n');
+  const parsed = frontmatter(file);
+  assert.deepEqual(parsed.fields, { name: 'sample', description: 'A sample' });
+  assert.equal(parsed.body.trim(), 'Body line.');
 });
