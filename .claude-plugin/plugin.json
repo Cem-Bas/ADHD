@@ -2,7 +2,20 @@
   "name": "adhd",
   "version": "0.1.0",
   "description": "Keeps Claude Code anchored to your actual request: visible Task Lock, Done/Now/Next/Blocked progress, Hyperfocus deep-research mode, precise boundary explanations, and a nonce-bound completion audit with bounded automatic repair.",
-  "author": { "name": "Cem Bas" },
+  "author": {
+    "name": "Cem Bas"
+  },
+  "homepage": "https://github.com/Cem-Bas/ADHD",
+  "repository": "https://github.com/Cem-Bas/ADHD",
   "license": "Apache-2.0",
-  "keywords": ["adhd", "focus", "task-contract", "hyperfocus", "research", "completion-audit", "hooks", "accessibility"]
+  "keywords": [
+    "adhd",
+    "focus",
+    "task-contract",
+    "hyperfocus",
+    "research",
+    "completion-audit",
+    "hooks",
+    "accessibility"
+  ]
 }

@@ -25,7 +25,14 @@ Every ordinary request you type becomes a task contract that the plugin stores v
 
 ## Install
 
-The repository root is a local marketplace named `adhd-local`.
+The repository root is a marketplace named `adhd-local`. From GitHub:
+
+```bash
+claude plugin marketplace add Cem-Bas/ADHD
+claude plugin install adhd@adhd-local
+```
+
+From a local clone:
 
 ```bash
 claude plugin marketplace add /absolute/path/to/ADHD
