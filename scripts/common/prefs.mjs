@@ -13,6 +13,7 @@ export const PREFERENCE_DEFINITIONS = {
   repairCycles: { type: 'integer', min: 0, max: 6, default: 6, description: 'Maximum automatic repair cycles per task' },
   approvalPolicy: { type: 'enum', values: ['material-only', 'always-ask'], default: 'material-only', description: 'When Claude pauses for approval' },
   retentionDays: { type: 'integer', min: 0, max: 365, default: 30, description: 'Days to keep finished session records' },
+  visualCheck: { type: 'enum', values: ['auto', 'off'], default: 'auto', description: 'Whether Claude decides and runs visual UI checks' },
 };
 
 export function defaultPreferences() {

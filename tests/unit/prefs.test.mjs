@@ -8,6 +8,7 @@ test('defaults match the spec', () => {
   assert.deepEqual(defaultPreferences(), {
     outputDetail: 'standard', chunkSize: 'one-action', progressCadence: 'milestone', researchDepth: 'standard', sourceStrictness: 'standard',
     sourceVerification: true, taskLockDetail: 'compact', repairCycles: 6, approvalPolicy: 'material-only', retentionDays: 30,
+    visualCheck: 'auto',
   });
 });
 

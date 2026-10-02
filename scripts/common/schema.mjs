@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const REPAIR_PHASES = ['REPAIR_1', 'REPAIR_2', 'REPAIR_3', 'REPAIR_4', 'REPAIR_5', 'REPAIR_6'];
 export const TERMINAL_PHASES = ['COMPLETE', 'BOUNDED_STOP', 'DEGRADED_STOP', 'CANCELLED'];
 export const OPEN_PHASES = ['ACTIVE', ...REPAIR_PHASES, 'REPORT_REQUIRED', 'DEGRADED_REPORT_REQUIRED'];
@@ -14,7 +14,8 @@ const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}
 const NONCE_RE = /^[0-9a-f]{32}$/;
 
 const TOP_LEVEL_KEYS = ['schemaVersion', 'sessionId', 'taskId', 'contractVersion', 'requestDigest', 'cwd', 'transcriptPath', 'phase', 'mode', 'originalRequest', 'userTurns', 'preferencesSnapshot', 'evidence', 'audit', 'repair', 'closure', 'createdAt', 'updatedAt', 'expiresAt', 'extensions'];
-const EVIDENCE_KEYS = ['artifacts', 'commands', 'toolEvents', 'claims', 'sources', 'unresolved', 'agents', 'dropped'];
+const EVIDENCE_KEYS = ['artifacts', 'commands', 'toolEvents', 'claims', 'sources', 'unresolved', 'agents', 'dropped', 'visual', 'answers'];
+const OBJECT_EVIDENCE_KEYS = new Set(['dropped', 'visual']);
 const FORBIDDEN_EXTENSION_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'command', 'commands', 'exec', 'shell', 'script', 'eval', 'args']);
 
 function isPlainObject(value) {
@@ -25,8 +26,12 @@ function isIso(value) {
   return typeof value === 'string' && ISO_RE.test(value) && !Number.isNaN(Date.parse(value));
 }
 
+export function emptyVisual() {
+  return { decision: null, uiTouched: [], checks: [] };
+}
+
 export function emptyEvidence() {
-  return { artifacts: [], commands: [], toolEvents: [], claims: [], sources: [], unresolved: [], agents: [], dropped: { toolEvents: 0 } };
+  return { artifacts: [], commands: [], toolEvents: [], claims: [], sources: [], unresolved: [], agents: [], dropped: { toolEvents: 0 }, visual: emptyVisual(), answers: [] };
 }
 
 export function newSessionRecord({ sessionId, cwd, now, transcriptPath = null, preferencesSnapshot = {}, retentionDays = 30 }) {
@@ -96,8 +101,11 @@ export function validateSessionRecord(record) {
   if (!isPlainObject(record.evidence)) errors.push('evidence must be an object');
   else {
     for (const key of Object.keys(record.evidence)) if (!EVIDENCE_KEYS.includes(key)) errors.push(`unknown evidence field: ${key}`);
-    for (const key of EVIDENCE_KEYS) if (key !== 'dropped' && !Array.isArray(record.evidence[key])) errors.push(`evidence.${key} must be an array`);
+    for (const key of EVIDENCE_KEYS) if (!OBJECT_EVIDENCE_KEYS.has(key) && !Array.isArray(record.evidence[key])) errors.push(`evidence.${key} must be an array`);
     if (!isPlainObject(record.evidence.dropped) || !Number.isInteger(record.evidence.dropped.toolEvents)) errors.push('evidence.dropped malformed');
+    const visual = record.evidence.visual;
+    if (!isPlainObject(visual) || !Array.isArray(visual.uiTouched) || !Array.isArray(visual.checks)) errors.push('evidence.visual malformed');
+    else if (!(visual.decision === null || (isPlainObject(visual.decision) && typeof visual.decision.needed === 'boolean' && typeof visual.decision.reason === 'string' && isIso(visual.decision.at)))) errors.push('evidence.visual.decision malformed');
   }
   if (!isPlainObject(record.audit)) errors.push('audit malformed');
   else {
@@ -123,6 +131,10 @@ export function validateSessionRecord(record) {
 export function migrateSessionRecord(record) {
   if (!isPlainObject(record)) return { ok: false, error: 'record is not an object' };
   if (record.schemaVersion === SCHEMA_VERSION) return { ok: true, record, migrated: false };
+  if (record.schemaVersion === 1) {
+    const evidence = isPlainObject(record.evidence) ? record.evidence : {};
+    return { ok: true, migrated: true, record: { ...record, schemaVersion: SCHEMA_VERSION, evidence: { ...evidence, visual: emptyVisual(), answers: [] } } };
+  }
   if (typeof record.schemaVersion === 'number' && record.schemaVersion > SCHEMA_VERSION) return { ok: false, error: `schemaVersion ${record.schemaVersion} is newer than supported ${SCHEMA_VERSION}` };
   return { ok: false, error: `unsupported schemaVersion ${String(record.schemaVersion)}` };
 }

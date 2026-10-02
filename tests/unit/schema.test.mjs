@@ -35,12 +35,37 @@ test('extensions may hold metadata but never executable-looking keys', () => {
   assert.equal(validateSessionRecord(record).ok, false);
 });
 
-test('migration accepts v1, rejects newer and unknown versions', () => {
+test('a v1 record migrates to v2 with empty visual and answers; newer and unknown versions are rejected', () => {
   const record = newSessionRecord({ sessionId: 'abc', cwd: '/p', now });
-  assert.equal(migrateSessionRecord(record).ok, true);
-  assert.equal(migrateSessionRecord({ ...record, schemaVersion: 2 }).ok, false);
+  assert.equal(record.schemaVersion, 2);
+  assert.deepEqual(migrateSessionRecord(record), { ok: true, record, migrated: false });
+  const v1 = structuredClone(record);
+  v1.schemaVersion = 1;
+  delete v1.evidence.visual;
+  delete v1.evidence.answers;
+  const migrated = migrateSessionRecord(v1);
+  assert.equal(migrated.ok, true);
+  assert.equal(migrated.migrated, true);
+  assert.equal(migrated.record.schemaVersion, 2);
+  assert.deepEqual(migrated.record.evidence.visual, { decision: null, uiTouched: [], checks: [] });
+  assert.deepEqual(migrated.record.evidence.answers, []);
+  assert.deepEqual(validateSessionRecord(migrated.record), { ok: true, errors: [] });
+  assert.equal(migrateSessionRecord({ ...record, schemaVersion: 3 }).ok, false);
   assert.equal(migrateSessionRecord({ ...record, schemaVersion: 'x' }).ok, false);
   assert.equal(migrateSessionRecord('nope').ok, false);
+});
+
+test('evidence.visual and evidence.answers are validated', () => {
+  const record = newSessionRecord({ sessionId: 'abc', cwd: '/p', now });
+  record.evidence.visual.decision = { needed: true, reason: 'signup form', at: '2026-10-02T10:00:00.000Z' };
+  assert.equal(validateSessionRecord(record).ok, true);
+  record.evidence.visual.decision = { needed: 'yes', reason: 'x', at: '2026-10-02T10:00:00.000Z' };
+  assert.ok(validateSessionRecord(record).errors.includes('evidence.visual.decision malformed'));
+  record.evidence.visual = { decision: null, uiTouched: 'no', checks: [] };
+  assert.ok(validateSessionRecord(record).errors.includes('evidence.visual malformed'));
+  record.evidence.visual = { decision: null, uiTouched: [], checks: [] };
+  record.evidence.answers = 'no';
+  assert.ok(validateSessionRecord(record).errors.includes('evidence.answers must be an array'));
 });
 
 test('phase helpers agree with the phase list', () => {
