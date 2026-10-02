@@ -4,7 +4,7 @@ import { mutateSession } from './common/store.mjs';
 import { sessionFile } from './common/paths.mjs';
 import { fileExists } from './common/fsx.mjs';
 import { isOpenPhase } from './common/schema.mjs';
-import { CAPTURED_TOOLS, summarizeToolEvent } from './common/evidence.mjs';
+import { isCapturedTool, summarizeToolEvent } from './common/evidence.mjs';
 import { recordToolEvent, trackAgent } from './common/session.mjs';
 import { isAdhdError } from './common/errors.mjs';
 import { appendDiagnostic } from './common/diagnostics.mjs';
@@ -14,7 +14,7 @@ function handleEvidence({ input, sessionId, dataRoot, now }) {
   const agentEvent = event === 'SubagentStart' || event === 'SubagentStop';
   if (!agentEvent) {
     if (input.agent_id) return null;
-    if (!CAPTURED_TOOLS.has(input.tool_name)) return null;
+    if (!isCapturedTool(input.tool_name)) return null;
   }
   if (!fileExists(sessionFile(dataRoot, sessionId))) return null;
   try {

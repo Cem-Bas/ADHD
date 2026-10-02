@@ -14,6 +14,7 @@ const MAX_SOURCES = 1000;
 const MAX_AGENTS = 100;
 const MAX_ANSWERS = 20;
 const MAX_ANSWER_CHARS = 20_000;
+const MAX_ANSWER_BYTES = 256 * 1024;
 
 function iso(at) {
   return new Date(at).toISOString();
@@ -159,6 +160,8 @@ export function recordAnswer(record, text, at) {
   const answers = record.evidence.answers;
   answers.push({ contractVersion: record.contractVersion, text: text.slice(0, MAX_ANSWER_CHARS), truncated: text.length > MAX_ANSWER_CHARS, at: iso(at) });
   if (answers.length > MAX_ANSWERS) answers.splice(0, answers.length - MAX_ANSWERS);
+  // The session file is capped at 2 MiB, so answers get a byte budget, not just a character limit.
+  while (answers.length > 1 && answers.reduce((sum, answer) => sum + Buffer.byteLength(answer.text, 'utf8'), 0) > MAX_ANSWER_BYTES) answers.shift();
   return record;
 }
 

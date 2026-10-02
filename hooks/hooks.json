@@ -29,7 +29,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|WebFetch|WebSearch|Agent|Task",
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|WebFetch|WebSearch|Agent|Task|mcp__claude-in-chrome__.*|mcp__.*playwright.*",
         "hooks": [
           {
             "type": "command",
@@ -42,7 +42,7 @@
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|WebFetch|WebSearch|Agent|Task",
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|WebFetch|WebSearch|Agent|Task|mcp__claude-in-chrome__.*|mcp__.*playwright.*",
         "hooks": [
           {
             "type": "command",

@@ -237,7 +237,10 @@ const commands = {
     const sessionId = resolveSessionId(root, flags);
     const payload = await readStdinJson();
     return mutateOpen(root, sessionId, now, (record) => {
-      const check = recordVisualCheck(record, payload, { at: now, fileExists, readJson: readJsonFile });
+      const checkDir = visualDir(root, sessionId, record.taskId);
+      const check = recordVisualCheck(record, payload, { at: now, checkDir, fileExists, readJson: readJsonFile, mtime: (file) => fs.statSync(file).mtimeMs });
+      // Use up result.json so a later run that crashes before writing one cannot reuse this result.
+      fs.renameSync(path.join(checkDir, RESULT_FILE), path.join(checkDir, `result-${record.evidence.visual.checks.length}.json`));
       return { result: { ok: true, check, gaps: visualGaps(record, { fileExists }) } };
     });
   },

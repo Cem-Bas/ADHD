@@ -234,3 +234,13 @@ test('recordAnswer stores the answer with its contract version, caps size and co
   assert.throws(() => recordAnswer(record, '   ', now), /INVALID_ANSWER|non-empty/);
   assert.throws(() => recordAnswer(record, 42, now), /INVALID_ANSWER|non-empty/);
 });
+
+test('recorded answers stay within a 256 KB total byte budget, dropping the oldest', () => {
+  const record = fresh();
+  for (let i = 0; i < 20; i += 1) recordAnswer(record, `${i}:${'語'.repeat(19_990)}`, now);
+  const bytes = record.evidence.answers.reduce((sum, answer) => sum + Buffer.byteLength(answer.text, 'utf8'), 0);
+  assert.ok(bytes <= 256 * 1024, `answers use ${bytes} bytes`);
+  assert.ok(record.evidence.answers.at(-1).text.startsWith('19:'));
+  recordAnswer(record, 'short', now);
+  assert.equal(record.evidence.answers.at(-1).text, 'short');
+});

@@ -187,3 +187,31 @@ test('data delete-session removes the session visual folder', () => {
   assert.ok(deleted.deleted.includes(path.join(root, 'visual', 'sess-test-1')));
   assert.equal(fs.existsSync(path.join(root, 'visual', 'sess-test-1')), false);
 });
+
+test('visual-record uses up result.json, so a crashed re-run cannot reuse the old result', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  runHook('prompt', root, promptInput({ prompt: 'build a signup page', cwd }));
+  const where = runState(root, 'visual-dir', { args: ['--session', 'sess-test-1'] }).json;
+  runState(root, 'visual-decide', { args: ['--session', 'sess-test-1'], input: { needed: true, reason: 'new page' } });
+  const shots = ['d.png', 'p.png'].map((name) => path.join(where.dir, name));
+  for (const shot of shots) fs.writeFileSync(shot, 'png');
+  fs.writeFileSync(where.resultFile, JSON.stringify({ passed: true, screenshots: shots }));
+  runHook('evidence', root, toolInput({ cwd, toolUseId: 'toolu_r1', toolInputValue: { command: `node "${where.script}"` } }));
+  assert.equal(runState(root, 'visual-record', { args: ['--session', 'sess-test-1'], input: { resultFile: where.resultFile } }).json.check.ok, true);
+  assert.equal(fs.existsSync(where.resultFile), false);
+  assert.equal(fs.existsSync(path.join(where.dir, 'result-1.json')), true);
+  runHook('evidence', root, toolInput({ cwd, toolUseId: 'toolu_r2', toolInputValue: { command: `node "${where.script}"` } }));
+  const again = runState(root, 'visual-record', { args: ['--session', 'sess-test-1'], input: { resultFile: where.resultFile } });
+  assert.deepEqual([again.status, again.json.error.code], [1, 'INVALID_VISUAL']);
+});
+
+test('browser tool events from Claude in Chrome and Playwright MCP are captured', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  runHook('prompt', root, promptInput({ prompt: 'check the page', cwd }));
+  runHook('evidence', root, toolInput({ cwd, toolName: 'mcp__claude-in-chrome__computer', toolUseId: 'toolu_b1', toolInputValue: { action: 'screenshot' }, toolResponse: { ok: true } }));
+  runHook('evidence', root, toolInput({ cwd, toolName: 'mcp__plugin_playwright_playwright__browser_take_screenshot', toolUseId: 'toolu_b2', toolInputValue: {}, toolResponse: { ok: true } }));
+  runHook('evidence', root, toolInput({ cwd, toolName: 'mcp__claude_ai_Gmail__send_message', toolUseId: 'toolu_x', toolInputValue: {}, toolResponse: {} }));
+  assert.deepEqual(readSession(root, 'sess-test-1').evidence.toolEvents.map((e) => e.toolUseId), ['toolu_b1', 'toolu_b2']);
+});

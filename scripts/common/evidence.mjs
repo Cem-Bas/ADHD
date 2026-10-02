@@ -3,6 +3,15 @@ import { MAX_TOOL_RESULT_BYTES } from './schema.mjs';
 
 export const CAPTURED_TOOLS = new Set(['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Agent', 'Task']);
 export const MUTATING_TOOLS = new Set(['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+const BROWSER_TOOL_RE = /^mcp__(?:claude-in-chrome__|[\w-]*playwright[\w-]*?__)/;
+
+export function isBrowserTool(name) {
+  return typeof name === 'string' && BROWSER_TOOL_RE.test(name);
+}
+
+export function isCapturedTool(name) {
+  return CAPTURED_TOOLS.has(name) || isBrowserTool(name);
+}
 
 const READ_ONLY_PROGRAMS = new Set(['cat', 'head', 'tail', 'grep', 'egrep', 'fgrep', 'rg', 'ls', 'wc', 'pwd', 'echo', 'printf', 'diff', 'stat', 'file', 'which', 'cd', 'true', 'uniq', 'cut', 'tr', 'jq', 'basename', 'dirname', 'realpath', 'sed', 'find', 'sort', 'git']);
 const READ_ONLY_GIT = new Set(['status', 'log', 'show', 'diff', 'rev-parse', 'ls-files', 'blame', 'grep']);
