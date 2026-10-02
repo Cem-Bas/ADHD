@@ -8,6 +8,7 @@ import { transition, nextPhaseAfterFailedEvaluation, MAX_CONSECUTIVE_BLOCKS } fr
 import { evaluateStop, invalidateAudit, receiptCoverage, createDegradedTask } from './common/session.mjs';
 import { readLastAssistantText } from './common/transcript.mjs';
 import { appendDiagnostic } from './common/diagnostics.mjs';
+import { visualSummary } from './common/visual.mjs';
 import { renderRepairInstruction, renderBoundedReportInstruction, renderDegradedReportInstruction, boundedReportPresent, degradedReportPresent, waitingOnUser } from './common/render.mjs';
 
 function lastMessage(input, record) {
@@ -47,12 +48,12 @@ function decide(record, { input, now, pluginRoot, dataRoot }) {
     record.repair.gaps = [];
     transition(record, 'COMPLETE', { now });
     const coverage = receiptCoverage(record);
-    return { result: { systemMessage: `ADHD: contract verified — COMPLETE (${coverage.passed}/${coverage.total} items PASS, ${record.repair.completed} repair(s)).` } };
+    return { result: { systemMessage: `ADHD: contract verified — COMPLETE (${coverage.passed}/${coverage.total} items PASS, ${record.repair.completed} repair(s))${visualSummary(record)}.` } };
   }
   if (waitingOnUser(lastMessage(input, record))) {
     return { result: { systemMessage: `ADHD: task ${record.taskId} paused — waiting on your answer; NOT complete. The task resumes with your next message.` } };
   }
-  if (evaluation.gaps.every((gap) => gap.code === 'ITEM_BLOCKED')) {
+  if (evaluation.gaps.every((gap) => gap.code === 'ITEM_BLOCKED' || gap.code === 'VISUAL_BLOCKED')) {
     record.repair.gaps = evaluation.gaps;
     return { result: { systemMessage: `ADHD: task ${record.taskId} paused — ${evaluation.gaps.length} item(s) BLOCKED on user input or an external condition; NOT complete. The task resumes with the user's next message.` } };
   }

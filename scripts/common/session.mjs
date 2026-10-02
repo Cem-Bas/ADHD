@@ -5,7 +5,7 @@ import { transition, repairIndex } from './statemachine.mjs';
 import { MUTATING_TOOLS, redact, isReadOnlyCommand } from './evidence.mjs';
 import { validateClaim, validateUnresolved, assessLedger } from './ledger.mjs';
 import { AdhdError } from './errors.mjs';
-import { noteUiEdits } from './visual.mjs';
+import { noteUiEdits, visualGaps } from './visual.mjs';
 
 export const RECEIPT_STATUSES = ['PASS', 'PARTIAL', 'BLOCKED'];
 const MAX_ARTIFACTS = 200;
@@ -296,6 +296,7 @@ export function evaluateStop(record, { cwd, fileExists }) {
     if (record.evidence.claims.length === 0) gaps.push({ code: 'HYPERFOCUS_EMPTY', detail: 'Hyperfocus mode requires a claim ledger; none was recorded through state.mjs evidence-add' });
     else for (const gap of assessLedger(record.evidence.claims, record.evidence.unresolved).gaps) gaps.push({ code: 'HYPERFOCUS_UNSUPPORTED', itemId: gap.claimId, detail: gap.reasons.join('; ') });
   }
+  gaps.push(...visualGaps(record, { fileExists }));
   const unique = dedupe(gaps);
   return { pass: unique.length === 0, gaps: unique };
 }

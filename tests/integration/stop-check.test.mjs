@@ -284,3 +284,79 @@ test('malformed hook input and invalid session ids never block', () => {
   const invalid = runHook('stop', root, stopInput({ sessionId: 'bad/id' }));
   assert.deepEqual([invalid.status, invalid.stdout], [0, '']);
 });
+
+function visualSetup(root, cwd) {
+  const where = runState(root, 'visual-dir', { args: ['--session', 'sess-test-1'] }).json;
+  const shots = ['d.png', 'p.png'].map((name) => path.join(where.dir, name));
+  for (const shot of shots) fs.writeFileSync(shot, 'png');
+  return { where, shots };
+}
+
+function runCheck(root, cwd, where, result, id = 'toolu_check') {
+  fs.writeFileSync(where.resultFile, JSON.stringify(result));
+  runHook('evidence', root, toolInput({ cwd, toolUseId: id, toolInputValue: { command: `node "${where.script}"` } }));
+  return runState(root, 'visual-record', { args: ['--session', 'sess-test-1'], input: { resultFile: where.resultFile } }).json;
+}
+
+const writeUi = (root, cwd, id, file = 'src/Signup.tsx') => runHook('evidence', root, toolInput({ cwd, toolName: 'Write', toolUseId: id, toolInputValue: { file_path: path.join(cwd, file), content: 'x' }, toolResponse: { type: 'create' } }));
+
+test('a UI edit without a visual decision blocks even with an all-PASS receipt', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  begin(root, cwd, 'build a signup page');
+  writeUi(root, cwd, 'toolu_w1');
+  audit(root, readSession(root, 'sess-test-1'));
+  const result = runHook('stop', root, stopInput({ cwd, lastAssistantMessage: 'Done.' })).json;
+  assert.equal(result.decision, 'block');
+  assert.ok(result.reason.includes('[VISUAL_UNDECIDED]'));
+});
+
+test('a needed and passing visual check completes with the UI line; a later UI edit makes it stale', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  begin(root, cwd, 'build a signup page');
+  writeUi(root, cwd, 'toolu_w1');
+  runState(root, 'visual-decide', { args: ['--session', 'sess-test-1'], input: { needed: true, reason: 'new signup page' } });
+  const { where, shots } = visualSetup(root, cwd);
+  assert.equal(runCheck(root, cwd, where, { passed: true, url: 'file:///x', screenshots: shots }).check.ok, true);
+  audit(root, readSession(root, 'sess-test-1'));
+  const done = runHook('stop', root, stopInput({ cwd, lastAssistantMessage: 'Done.' })).json;
+  assert.match(done.systemMessage, /COMPLETE \(1\/1 items PASS, 0 repair\(s\)\) · UI verified \(2 screenshots\)/);
+
+  const root2 = tmpDataRoot();
+  begin(root2, cwd, 'build a signup page');
+  runState(root2, 'visual-decide', { args: ['--session', 'sess-test-1'], input: { needed: true, reason: 'new signup page' } });
+  const second = visualSetup(root2, cwd);
+  runCheck(root2, cwd, second.where, { passed: true, screenshots: second.shots });
+  writeUi(root2, cwd, 'toolu_w2');
+  audit(root2, readSession(root2, 'sess-test-1'));
+  const stale = runHook('stop', root2, stopInput({ cwd, lastAssistantMessage: 'Done.' })).json;
+  assert.equal(stale.decision, 'block');
+  assert.ok(stale.reason.includes('[VISUAL_STALE]'));
+});
+
+test('a blocked visual check plus a BLOCKED receipt item pauses the task', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  begin(root, cwd, 'build a signup page');
+  runState(root, 'visual-decide', { args: ['--session', 'sess-test-1'], input: { needed: true, reason: 'new signup page' } });
+  const { where } = visualSetup(root, cwd);
+  runCheck(root, cwd, where, { passed: false, blocked: 'PLAYWRIGHT_MISSING: install with npm i -D playwright && npx playwright install chromium' });
+  audit(root, readSession(root, 'sess-test-1'), { items: [{ id: 'R1', requirement: 'UI verified visually', status: 'BLOCKED', gap: 'Playwright is not installed; ask the user' }] });
+  const result = runHook('stop', root, stopInput({ cwd, lastAssistantMessage: 'Playwright is missing.' })).json;
+  assert.equal(result.decision, undefined);
+  assert.match(result.systemMessage, /paused/);
+  assert.equal(readSession(root, 'sess-test-1').phase, 'ACTIVE');
+});
+
+test('visualCheck=off lets a UI task complete without a visual check', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  runState(root, 'prefs', { args: ['set', '--key', 'visualCheck', '--value', 'off', '--scope', 'global', '--cwd', cwd] });
+  begin(root, cwd, 'build a signup page');
+  writeUi(root, cwd, 'toolu_w1');
+  audit(root, readSession(root, 'sess-test-1'));
+  const result = runHook('stop', root, stopInput({ cwd, lastAssistantMessage: 'Done.' })).json;
+  assert.match(result.systemMessage, /COMPLETE/);
+  assert.equal(result.systemMessage.includes('UI verified'), false);
+});
