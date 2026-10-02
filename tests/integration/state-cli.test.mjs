@@ -143,3 +143,14 @@ test('listing commands tolerate unreadable entries, and corrupt state is reporte
   const audit = runState(root, 'audit-record', { args: ['--session', 'sess-test-1'], input: { taskId: 'x' } });
   assert.deepEqual([audit.status, audit.json.error.code], [1, 'STATE_CORRUPT']);
 });
+
+test('answer-record stores the answer for the open task and rejects empty input', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  runHook('prompt', root, promptInput({ prompt: 'should we use dots?', cwd }));
+  const ok = runState(root, 'answer-record', { args: ['--session', 'sess-test-1'], input: { answer: "No: it can't give an exit code." } }).json;
+  assert.deepEqual([ok.ok, ok.contractVersion, ok.answers], [true, 1, 1]);
+  assert.equal(readSession(root, 'sess-test-1').evidence.answers[0].text, "No: it can't give an exit code.");
+  const empty = runState(root, 'answer-record', { args: ['--session', 'sess-test-1'], input: { answer: '' } });
+  assert.deepEqual([empty.status, empty.json.error.code], [1, 'INVALID_ANSWER']);
+});

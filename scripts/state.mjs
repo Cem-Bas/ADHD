@@ -4,7 +4,7 @@ import path from 'node:path';
 import { parseArgs, readStdin, parseJson, writeStdoutJson } from './common/io.mjs';
 import { resolveDataRoot, validateSessionId, normalizeCwd, dataPaths, diagnosticsFile, projectKey } from './common/paths.mjs';
 import { loadSession, mutateSession, archiveTask, listSessionRecords, findOpenSessionsForCwd } from './common/store.mjs';
-import { startTask, setMode, cancelTask, closeReplaced, declareArtifacts, addResearchEvidence, recordAuditReceipt, evaluateStop } from './common/session.mjs';
+import { startTask, setMode, cancelTask, closeReplaced, declareArtifacts, addResearchEvidence, recordAuditReceipt, evaluateStop, recordAnswer } from './common/session.mjs';
 import { isOpenPhase, MODES } from './common/schema.mjs';
 import { loadPreferences, setPreference, unsetPreference, resetPreferences, PREFERENCE_DEFINITIONS } from './common/prefs.mjs';
 import { cleanupExpired } from './common/retention.mjs';
@@ -204,6 +204,14 @@ const commands = {
     return mutateOpen(root, sessionId, now, (record) => {
       declareArtifacts(record, payload && payload.artifacts, now);
       return { result: { ok: true, artifacts: record.evidence.artifacts } };
+    });
+  },
+  async 'answer-record'({ root, flags, now }) {
+    const sessionId = resolveSessionId(root, flags);
+    const payload = await readStdinJson();
+    return mutateOpen(root, sessionId, now, (record) => {
+      recordAnswer(record, payload && payload.answer, now);
+      return { result: { ok: true, contractVersion: record.contractVersion, answers: record.evidence.answers.length } };
     });
   },
   cancel({ root, flags, now }) {

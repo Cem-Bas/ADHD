@@ -44,7 +44,7 @@ test('the protocol orders answer before audit and the auditor grades the substan
   const amended = renderTaskLockProtocol({ record, ...ctx, full: false });
   assert.ok(amended.includes('give your complete answer, then re-run the completion audit as the last action of the turn'));
   const repair = renderRepairInstruction({ record, gaps: [{ code: 'ITEM_PARTIAL', itemId: 'R1', detail: 'x' }], ...ctx });
-  assert.ok(repair.includes('restate your complete answer, then re-run the contract auditor with the new nonce as the last action'));
+  assert.ok(repair.includes('restate your complete answer, record it with answer-record, then re-run the contract auditor with the new nonce as the last action'));
   assert.ok(repair.includes('does not retract it'));
 });
 
@@ -156,4 +156,15 @@ test('ledger rendering stays bounded for long conversations and keeps the latest
   assert.ok(ledger.includes('turn88'));
   assert.equal(ledger.includes('turn87 '), false);
   assert.ok(ledger.includes('turns 1–88 are omitted'));
+});
+
+test('the protocol, the amendment reminder, and the auditor prompt use recorded answers', () => {
+  const record = make();
+  const full = renderTaskLockProtocol({ record, ...ctx, full: true });
+  assert.ok(full.includes(`node "${scriptPath(ctx.pluginRoot)}" answer-record --data "/data/adhd" --session "sess-1"`));
+  assert.ok(full.includes('question option previews'));
+  assert.ok(full.includes('evidence.answers'));
+  appendUserTurn(record, { text: 'and this', receivedAt: now + 1 });
+  const reminder = renderTaskLockProtocol({ record, ...ctx, full: false });
+  assert.ok(reminder.includes('answer-record'));
 });

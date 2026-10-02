@@ -11,6 +11,8 @@ const MAX_ARTIFACTS = 200;
 const MAX_CLAIMS = 300;
 const MAX_SOURCES = 1000;
 const MAX_AGENTS = 100;
+const MAX_ANSWERS = 20;
+const MAX_ANSWER_CHARS = 20_000;
 
 function iso(at) {
   return new Date(at).toISOString();
@@ -30,6 +32,7 @@ export function computeEvidenceDigest(record) {
     toolEvents: evidence.toolEvents.filter(changesState).map((event) => [event.toolUseId, event.ok, event.output.sha256]),
     claims: evidence.claims.map((claim) => [claim.claimId, claim.text, claim.confidence, claim.sources.map((source) => source.url)]),
     unresolved: evidence.unresolved.map((item) => item.question),
+    answers: evidence.answers.map((answer) => [answer.contractVersion, answer.text]),
   });
 }
 
@@ -145,6 +148,14 @@ export function declareArtifacts(record, artifacts, at) {
     if (current) Object.assign(current, entry);
     else record.evidence.artifacts.push(entry);
   }
+  return record;
+}
+
+export function recordAnswer(record, text, at) {
+  if (typeof text !== 'string' || text.trim() === '') throw new AdhdError('INVALID_ANSWER', 'answer must be a non-empty string');
+  const answers = record.evidence.answers;
+  answers.push({ contractVersion: record.contractVersion, text: text.slice(0, MAX_ANSWER_CHARS), truncated: text.length > MAX_ANSWER_CHARS, at: iso(at) });
+  if (answers.length > MAX_ANSWERS) answers.splice(0, answers.length - MAX_ANSWERS);
   return record;
 }
 

@@ -9,6 +9,12 @@ export const WAITING_MARKER = 'WAITING ON YOU';
 const WAITING_RE = /^[\s>*_#-]*WAITING ON YOU\s*[*_]*\s*:\s*[*_]*\s*\S/im;
 const WAITING_RULE = `When you cannot continue without the user's answer or approval, end the reply with the line \`${WAITING_MARKER}: <your single question>\` and stop: the plugin pauses the task without an audit, and the user's next message resumes it. Use it only for a genuine question, never to skip an audit of finished work.`;
 
+const SUMMARY_RULE = 'Text written just before a tool call may reach the user only as a short summary. Put anything the user must read or approve in the final message of the turn, or in question option previews.';
+
+function answerRule(answerCommand) {
+  return `Record your complete answer before the audit (JSON on stdin; escape single quotes as '\\''): ${answerCommand} <<< '{"answer":"<the full answer you gave the user>"}'`;
+}
+
 export function waitingOnUser(text) {
   return WAITING_RE.test(String(text || ''));
 }
@@ -93,7 +99,7 @@ export function auditorInvocation({ record, pluginRoot, dataRoot }) {
     'Procedure:',
     '1. Read the state file. Derive the requirement list from originalRequest.text and every entry of userTurns[] (a later explicit correction overrides an earlier conflicting instruction). The Task Lock in the transcript is a projection to check, never the source of truth.',
     '2. For each requirement, look for verifiable evidence: the transcript, declared artifacts (evidence.artifacts — check that the files exist), recorded commands (evidence.commands — exit status 0 means success), and files in the working directory. Assign PASS only with evidence, PARTIAL when work or evidence is missing, BLOCKED when completion depends on an unresolved external condition or a fact only the user can supply.',
-    '   When a requirement is to tell the user something, search every assistant reply since the request it belongs to: the latest substantive answer counts, and a later status-only line (such as "the check is running" or a one-line acknowledgement of an audit report) does not retract it.',
+    '   When a requirement is to tell the user something, read evidence.answers in the state file first (each entry is an answer the worker recorded, with its contract version), then search every assistant reply since the request it belongs to: the latest substantive answer counts, and a later status-only line (such as "the check is running" or a one-line acknowledgement of an audit report) does not retract it. A reply may appear in the transcript only as a short summary; the recorded answer is the full text.',
     '3. Judge the visible Task Lock: taskLockValid is false if it answers a nearby question, omits an explicit requirement, invents a deliverable, or states the wrong mode.',
     "4. Record the receipt by running exactly this command with the receipt JSON on stdin. Pass the JSON as a single-quoted here-string: <command> <<< '<receipt json>' — escape any single quote inside the JSON as '\\''. Do not use a heredoc.",
     command,
@@ -152,6 +158,7 @@ export function renderTaskLockProtocol({ record, prefs, pluginRoot, dataRoot, fu
   const auditor = auditorInvocation({ record, pluginRoot, dataRoot });
   const artifactCommand = stateCommand({ pluginRoot, dataRoot, sessionId: record.sessionId, subcommand: 'artifact-declare' });
   const evidenceCommand = stateCommand({ pluginRoot, dataRoot, sessionId: record.sessionId, subcommand: 'evidence-add' });
+  const answerCommand = stateCommand({ pluginRoot, dataRoot, sessionId: record.sessionId, subcommand: 'answer-record' });
   const parts = [headerLine(record), renderLedger(record), preferenceLine(prefs)];
   if (machineTurn) parts.push('This turn was injected by the system (a wakeup or background notification), not typed by the user. It is not part of the task ledger. Continue the task above.');
   if (full) {
@@ -170,10 +177,12 @@ export function renderTaskLockProtocol({ record, prefs, pluginRoot, dataRoot, fu
       BOUNDARY_TEMPLATE,
       'Never invent a policy, claim illegality without support, moralize, or silently answer a different question. Genuine restrictions remain binding.',
       WAITING_RULE,
+      SUMMARY_RULE,
       '6. EVIDENCE. Declare each deliverable file when it is finished so the completion check can verify that it exists (JSON on stdin):',
       `${artifactCommand}   <<< {"artifacts":[{"path":"<relative or absolute path>","purpose":"<what it is>"}]}`,
       '7. COMPLETION AUDIT (required before you finish). First give the user your complete answer, then invoke the adhd:contract-auditor subagent with the Agent tool as the last action of the turn — subagent_type "adhd:contract-auditor" — using this prompt verbatim:',
       fence(auditor.prompt),
+      answerRule(answerCommand),
       'The auditor grades the work and answer already given, so do not invoke it before the answer exists, and run no further commands or edits after invoking it.',
       'When the auditor reports that the receipt was accepted, reply in one short line and finish; do not launch another auditor for the same contract.',
       `If you stop without a fresh PASS receipt, the Stop hook blocks and starts a repair cycle (maximum ${record.repair.maximum}).`,
@@ -191,6 +200,7 @@ export function renderTaskLockProtocol({ record, prefs, pluginRoot, dataRoot, fu
       'ADHD protocol reminder: the newest user turn above amends this task (show `Changed: <previous requirement> -> <corrected requirement>` when it changes a requirement; a bare question or answer needs no delta). Keep one NOW action. Before you finish, give your complete answer, then re-run the completion audit as the last action of the turn with this prompt (the nonce is new):',
       fence(auditor.prompt),
       WAITING_RULE,
+      answerRule(answerCommand),
     );
     if (record.mode === 'hyperfocus') parts.push(`Hyperfocus is on: record claims and sources with ${evidenceCommand} (JSON on stdin) before finishing.`);
   }
@@ -224,7 +234,7 @@ export function renderRestoreContext({ record, prefs, pluginRoot, dataRoot, sour
 
 export function renderRepairInstruction({ record, gaps, pluginRoot, dataRoot }) {
   return [
-    `[ADHD] REPAIR ${record.repair.completed} of ${record.repair.maximum} — contract v${record.contractVersion} (digest ${shortDigest(record.requestDigest)}) is NOT complete. Fix only the gaps below, declare any new deliverable files, restate your complete answer, then re-run the contract auditor with the new nonce as the last action and stop.`,
+    `[ADHD] REPAIR ${record.repair.completed} of ${record.repair.maximum} — contract v${record.contractVersion} (digest ${shortDigest(record.requestDigest)}) is NOT complete. Fix only the gaps below, declare any new deliverable files, restate your complete answer, record it with answer-record, then re-run the contract auditor with the new nonce as the last action and stop.`,
     'Gaps:',
     formatGaps(gaps),
     'Auditor invocation (Agent tool, subagent_type "adhd:contract-auditor"):',

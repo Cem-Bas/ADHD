@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { newSessionRecord, validateSessionRecord } from '../../scripts/common/schema.mjs';
-import { startTask, appendUserTurn, setMode, cancelTask, closeReplaced, recordToolEvent, declareArtifacts, addResearchEvidence, auditFreshness, recordAuditReceipt, evaluateStop, receiptCoverage, trackAgent, createDegradedTask, computeEvidenceDigest, markLastTurn } from '../../scripts/common/session.mjs';
+import { startTask, appendUserTurn, setMode, cancelTask, closeReplaced, recordToolEvent, declareArtifacts, addResearchEvidence, auditFreshness, recordAuditReceipt, evaluateStop, receiptCoverage, trackAgent, createDegradedTask, computeEvidenceDigest, markLastTurn, recordAnswer } from '../../scripts/common/session.mjs';
 import { summarizeToolEvent } from '../../scripts/common/evidence.mjs';
 import { passingReceipt } from '../helpers.mjs';
 
@@ -218,4 +218,19 @@ test('cap violations throw before anything is recorded', () => {
   const claims = Array.from({ length: 301 }, (_, i) => ({ claimId: `c${i}`, text: 't', class: 'background', stability: 'stable', controversy: 'undisputed', confidence: 'low', rationale: 'r', sources: [source] }));
   assert.throws(() => addResearchEvidence(record, { claims }), /LEDGER_TOO_LARGE|exceeds limits/);
   assert.deepEqual([record.evidence.claims.length, record.evidence.sources.length], [0, 0]);
+});
+
+test('recordAnswer stores the answer with its contract version, caps size and count, and changes the evidence digest', () => {
+  const record = fresh();
+  const before = computeEvidenceDigest(record);
+  recordAnswer(record, 'The answer is no, because X.', now);
+  assert.deepEqual(record.evidence.answers[0], { contractVersion: 1, text: 'The answer is no, because X.', truncated: false, at: '2026-09-27T10:00:00.000Z' });
+  assert.notEqual(computeEvidenceDigest(record), before);
+  recordAnswer(record, 'x'.repeat(20_050), now);
+  assert.deepEqual([record.evidence.answers[1].text.length, record.evidence.answers[1].truncated], [20_000, true]);
+  for (let i = 0; i < 25; i += 1) recordAnswer(record, `a${i}`, now);
+  assert.equal(record.evidence.answers.length, 20);
+  assert.equal(record.evidence.answers.at(-1).text, 'a24');
+  assert.throws(() => recordAnswer(record, '   ', now), /INVALID_ANSWER|non-empty/);
+  assert.throws(() => recordAnswer(record, 42, now), /INVALID_ANSWER|non-empty/);
 });
