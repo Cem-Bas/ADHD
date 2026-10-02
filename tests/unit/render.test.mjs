@@ -168,3 +168,20 @@ test('the protocol, the amendment reminder, and the auditor prompt use recorded 
   const reminder = renderTaskLockProtocol({ record, ...ctx, full: false });
   assert.ok(reminder.includes('answer-record'));
 });
+
+test('the visual check section appears when visualCheck is auto and the auditor is told to view screenshots', () => {
+  const record = make();
+  const full = renderTaskLockProtocol({ record, ...ctx, full: true });
+  assert.ok(full.includes('6b. VISUAL CHECK'));
+  for (const sub of ['visual-decide', 'visual-dir', 'visual-record']) assert.ok(full.includes(`node "${scriptPath(ctx.pluginRoot)}" ${sub} --data "/data/adhd" --session "sess-1"`), sub);
+  assert.ok(full.includes('PLAYWRIGHT_MISSING'));
+  assert.ok(full.includes('1280x800') && full.includes('390x844'));
+  assert.ok(full.includes('Never install'));
+  assert.ok(full.includes('"method":"browser"'));
+  assert.ok(full.includes('open every screenshot'));
+  const off = { ...ctx, prefs: { ...prefs, effective: { ...prefs.effective, visualCheck: 'off' } } };
+  assert.equal(renderTaskLockProtocol({ record, ...off, full: true }).includes('6b. VISUAL CHECK'), false);
+  appendUserTurn(record, { text: 'tweak the button', receivedAt: now + 1 });
+  record.evidence.visual.uiTouched.push({ path: '/p/src/A.tsx', toolUseId: 't', at: '2026-09-27T10:00:01.000Z' });
+  assert.ok(renderTaskLockProtocol({ record, ...ctx, full: false }).includes('6b. VISUAL CHECK'));
+});

@@ -15,6 +15,25 @@ function answerRule(answerCommand) {
   return `Record your complete answer before the audit (JSON on stdin; escape single quotes as '\\''): ${answerCommand} <<< '{"answer":"<the full answer you gave the user>"}'`;
 }
 
+export function visualSection({ decideCommand, dirCommand, recordCommand }) {
+  return [
+    "6b. VISUAL CHECK. Before finishing, decide whether this task created or changed something a person sees or operates in a browser (pages, components, styles, templates, a route's UI). Backend-only code, tests, docs, CLI, and config with no visible effect need no check. Record the decision (JSON on stdin):",
+    `${decideCommand} <<< '{"needed":true,"reason":"<one line>"}'`,
+    `   When needed: get the check directory, script path, and result file with ${dirCommand}`,
+    '   Write the Playwright script to that script path (check.mjs) and run it with Bash from the project directory as node "<script path>". The script must:',
+    '   - load Playwright from the project: createRequire(path.join(process.cwd(), "package.json")), trying "playwright" then "@playwright/test";',
+    '   - reuse a running dev server (never kill or restart one); if none runs, start the dev script in the background and leave it running; open static .html files with file://;',
+    '   - visit every page or state the task changed, perform the actions the request names, and assert their visible result;',
+    '   - fail on uncaught page errors and console.error;',
+    '   - save a PNG screenshot at 1280x800 and at 390x844 for each page or state into the check directory;',
+    '   - write the result file as {"passed":true|false,"url":"<url>","screenshots":["<absolute paths>"],"failures":["<what failed>"]} and exit 0 only when every assertion passed.',
+    '   If the project has no Playwright but your own browser tools are available (Claude in Chrome or Playwright MCP), use them instead: visit the same pages, perform the same actions, save the same PNG screenshots into the check directory, and write the result file with "method":"browser" added. No script run is needed for that method.',
+    '   When neither can run, write {"passed":false,"blocked":"PLAYWRIGHT_MISSING: install with npm i -D playwright && npx playwright install chromium"} (or "BROWSER_LAUNCH_FAILED: <message>", or "APP_UNREACHABLE: <url>"); a script exits 3, 4, or 5. Never install anything yourself.',
+    `   Then record the run (JSON on stdin): ${recordCommand} <<< '{"resultFile":"<result file path>"}'`,
+    '   A blocked check pauses the task: tell the user exactly what is missing and how to fix it. The auditor will open every screenshot and grade it against the request.',
+  ].join('\n');
+}
+
 export function waitingOnUser(text) {
   return WAITING_RE.test(String(text || ''));
 }
@@ -101,6 +120,7 @@ export function auditorInvocation({ record, pluginRoot, dataRoot }) {
     '2. For each requirement, look for verifiable evidence: the transcript, declared artifacts (evidence.artifacts — check that the files exist), recorded commands (evidence.commands — exit status 0 means success), and files in the working directory. Assign PASS only with evidence, PARTIAL when work or evidence is missing, BLOCKED when completion depends on an unresolved external condition or a fact only the user can supply.',
     '   When a requirement is to tell the user something, read evidence.answers in the state file first (each entry is an answer the worker recorded, with its contract version), then search every assistant reply since the request it belongs to: the latest substantive answer counts, and a later status-only line (such as "the check is running" or a one-line acknowledgement of an audit report) does not retract it. A reply may appear in the transcript only as a short summary; the recorded answer is the full text.',
     '3. Judge the visible Task Lock: taskLockValid is false if it answers a nearby question, omits an explicit requirement, invents a deliverable, or states the wrong mode.',
+    '3b. Visual check: when evidence.visual.decision.needed is true, open every screenshot of the latest check with ok true using Read, grade them against the request (requested elements present, nothing visibly broken such as overlap, clipped text, or a blank page, phone layout usable), and add the item "UI verified visually" as PASS or PARTIAL with the exact visual gap; when the latest check has blocked set, mark that item BLOCKED with the blocked reason; a check with method "browser" has no script run, so rely on its screenshots alone. When decision.needed is false but evidence.visual.uiTouched is non-empty, judge the recorded reason and mark a weak reason PARTIAL.',
     "4. Record the receipt by running exactly this command with the receipt JSON on stdin. Pass the JSON as a single-quoted here-string: <command> <<< '<receipt json>' — escape any single quote inside the JSON as '\\''. Do not use a heredoc.",
     command,
     `Receipt JSON shape: ${receiptShape}`,
@@ -159,6 +179,12 @@ export function renderTaskLockProtocol({ record, prefs, pluginRoot, dataRoot, fu
   const artifactCommand = stateCommand({ pluginRoot, dataRoot, sessionId: record.sessionId, subcommand: 'artifact-declare' });
   const evidenceCommand = stateCommand({ pluginRoot, dataRoot, sessionId: record.sessionId, subcommand: 'evidence-add' });
   const answerCommand = stateCommand({ pluginRoot, dataRoot, sessionId: record.sessionId, subcommand: 'answer-record' });
+  const visualOn = prefs.effective.visualCheck !== 'off';
+  const visual = visualOn ? visualSection({
+    decideCommand: stateCommand({ pluginRoot, dataRoot, sessionId: record.sessionId, subcommand: 'visual-decide' }),
+    dirCommand: stateCommand({ pluginRoot, dataRoot, sessionId: record.sessionId, subcommand: 'visual-dir' }),
+    recordCommand: stateCommand({ pluginRoot, dataRoot, sessionId: record.sessionId, subcommand: 'visual-record' }),
+  }) : null;
   const parts = [headerLine(record), renderLedger(record), preferenceLine(prefs)];
   if (machineTurn) parts.push('This turn was injected by the system (a wakeup or background notification), not typed by the user. It is not part of the task ledger. Continue the task above.');
   if (full) {
@@ -180,6 +206,7 @@ export function renderTaskLockProtocol({ record, prefs, pluginRoot, dataRoot, fu
       SUMMARY_RULE,
       '6. EVIDENCE. Declare each deliverable file when it is finished so the completion check can verify that it exists (JSON on stdin):',
       `${artifactCommand}   <<< {"artifacts":[{"path":"<relative or absolute path>","purpose":"<what it is>"}]}`,
+      ...(visual ? [visual] : []),
       '7. COMPLETION AUDIT (required before you finish). First give the user your complete answer, then invoke the adhd:contract-auditor subagent with the Agent tool as the last action of the turn — subagent_type "adhd:contract-auditor" — using this prompt verbatim:',
       fence(auditor.prompt),
       answerRule(answerCommand),
@@ -201,6 +228,7 @@ export function renderTaskLockProtocol({ record, prefs, pluginRoot, dataRoot, fu
       fence(auditor.prompt),
       WAITING_RULE,
       answerRule(answerCommand),
+      ...(visual && (record.evidence.visual.uiTouched.length > 0 || (record.evidence.visual.decision && record.evidence.visual.decision.needed)) ? [visual] : []),
     );
     if (record.mode === 'hyperfocus') parts.push(`Hyperfocus is on: record claims and sources with ${evidenceCommand} (JSON on stdin) before finishing.`);
   }
