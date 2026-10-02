@@ -5,6 +5,7 @@ import { transition, repairIndex } from './statemachine.mjs';
 import { MUTATING_TOOLS, redact, isReadOnlyCommand } from './evidence.mjs';
 import { validateClaim, validateUnresolved, assessLedger } from './ledger.mjs';
 import { AdhdError } from './errors.mjs';
+import { noteUiEdits } from './visual.mjs';
 
 export const RECEIPT_STATUSES = ['PASS', 'PARTIAL', 'BLOCKED'];
 const MAX_ARTIFACTS = 200;
@@ -33,6 +34,7 @@ export function computeEvidenceDigest(record) {
     claims: evidence.claims.map((claim) => [claim.claimId, claim.text, claim.confidence, claim.sources.map((source) => source.url)]),
     unresolved: evidence.unresolved.map((item) => item.question),
     answers: evidence.answers.map((answer) => [answer.contractVersion, answer.text]),
+    visual: [evidence.visual.decision ? [evidence.visual.decision.needed, evidence.visual.decision.reason] : null, evidence.visual.checks.map((check) => [check.toolUseId, check.ok, check.blocked, check.at])],
   });
 }
 
@@ -118,6 +120,7 @@ export function recordToolEvent(record, event, at) {
     if (evidence.commands.length > MAX_TOOL_EVENTS) evidence.commands.splice(0, evidence.commands.length - MAX_TOOL_EVENTS);
   }
   if (changesState(event) && record.audit.receipt && record.audit.invalidatedAt === null) record.audit.invalidatedAt = iso(at);
+  noteUiEdits(record, event);
   return record;
 }
 
