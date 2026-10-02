@@ -34,6 +34,20 @@ test('full protocol carries the verbatim ledger, the Task Lock block, the audito
   assert.equal(text.includes('HYPERFOCUS'), false);
 });
 
+test('the protocol orders answer before audit and the auditor grades the substantive answer, not the newest status line', () => {
+  const record = make();
+  const full = renderTaskLockProtocol({ record, ...ctx, full: true });
+  assert.ok(full.includes('First give the user your complete answer, then invoke the adhd:contract-auditor subagent'));
+  assert.ok(full.includes('run no further commands or edits after invoking it'));
+  assert.ok(full.includes('reply in one short line and finish'));
+  assert.ok(full.includes('a later status-only line (such as "the check is running"'));
+  const amended = renderTaskLockProtocol({ record, ...ctx, full: false });
+  assert.ok(amended.includes('give your complete answer, then re-run the completion audit as the last action of the turn'));
+  const repair = renderRepairInstruction({ record, gaps: [{ code: 'ITEM_PARTIAL', itemId: 'R1', detail: 'x' }], ...ctx });
+  assert.ok(repair.includes('restate your complete answer, then re-run the contract auditor with the new nonce as the last action'));
+  assert.ok(repair.includes('does not retract it'));
+});
+
 test('short protocol omits the Task Lock template but keeps the auditor prompt; machine turns are labelled', () => {
   const record = make();
   appendUserTurn(record, { text: 'also docs', receivedAt: now + 1 });

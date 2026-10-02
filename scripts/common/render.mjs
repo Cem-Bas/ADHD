@@ -85,6 +85,7 @@ export function auditorInvocation({ record, pluginRoot, dataRoot }) {
     'Procedure:',
     '1. Read the state file. Derive the requirement list from originalRequest.text and every entry of userTurns[] (a later explicit correction overrides an earlier conflicting instruction). The Task Lock in the transcript is a projection to check, never the source of truth.',
     '2. For each requirement, look for verifiable evidence: the transcript, declared artifacts (evidence.artifacts — check that the files exist), recorded commands (evidence.commands — exit status 0 means success), and files in the working directory. Assign PASS only with evidence, PARTIAL when work or evidence is missing, BLOCKED when completion depends on an unresolved external condition or a fact only the user can supply.',
+    '   When a requirement is to tell the user something, search every assistant reply since the request it belongs to: the latest substantive answer counts, and a later status-only line (such as "the check is running" or a one-line acknowledgement of an audit report) does not retract it.',
     '3. Judge the visible Task Lock: taskLockValid is false if it answers a nearby question, omits an explicit requirement, invents a deliverable, or states the wrong mode.',
     "4. Record the receipt by running exactly this command with the receipt JSON on stdin. Pass the JSON as a single-quoted here-string: <command> <<< '<receipt json>' — escape any single quote inside the JSON as '\\''. Do not use a heredoc.",
     command,
@@ -162,20 +163,23 @@ export function renderTaskLockProtocol({ record, prefs, pluginRoot, dataRoot, fu
       'Never invent a policy, claim illegality without support, moralize, or silently answer a different question. Genuine restrictions remain binding.',
       '6. EVIDENCE. Declare each deliverable file when it is finished so the completion check can verify that it exists (JSON on stdin):',
       `${artifactCommand}   <<< {"artifacts":[{"path":"<relative or absolute path>","purpose":"<what it is>"}]}`,
-      '7. COMPLETION AUDIT (required before you finish). Invoke the adhd:contract-auditor subagent with the Agent tool — subagent_type "adhd:contract-auditor" — using this prompt verbatim:',
+      '7. COMPLETION AUDIT (required before you finish). First give the user your complete answer, then invoke the adhd:contract-auditor subagent with the Agent tool as the last action of the turn — subagent_type "adhd:contract-auditor" — using this prompt verbatim:',
       fence(auditor.prompt),
-      `Wait for the auditor to report that the receipt was accepted, then finish. If you stop without a fresh PASS receipt, the Stop hook blocks and starts a repair cycle (maximum ${record.repair.maximum}). Never claim completion while any item is PARTIAL or BLOCKED.`,
+      'The auditor grades the work and answer already given, so do not invoke it before the answer exists, and run no further commands or edits after invoking it.',
+      'When the auditor reports that the receipt was accepted, reply in one short line and finish; do not launch another auditor for the same contract.',
+      `If you stop without a fresh PASS receipt, the Stop hook blocks and starts a repair cycle (maximum ${record.repair.maximum}).`,
+      'Never claim completion while any item is PARTIAL or BLOCKED.',
       '8. CANCELLATION. Only /adhd:cancel, or an entire prompt of "cancel", "stop", "stop this task", or "cancel this task", cancels this task. "Stop doing X and do Y" is an amendment. Cancellation performs no cleanup or follow-on changes.',
     );
   } else if (auditFreshness(record).fresh) {
     parts.push(
       '',
-      'ADHD protocol reminder: a fresh audit receipt is already recorded for this unchanged task. Do not launch another contract auditor. Finish this turn and let the Stop hook verify the recorded receipt.',
+      'ADHD protocol reminder: a fresh audit receipt is already recorded for this unchanged task. Do not launch another contract auditor, and do not restate or change your answer. Reply in one short line, finish this turn, and let the Stop hook verify the recorded receipt.',
     );
   } else {
     parts.push(
       '',
-      'ADHD protocol reminder: the newest user turn above amends this task (show `Changed: <previous requirement> -> <corrected requirement>` when it changes a requirement; a bare question or answer needs no delta). Keep one NOW action. Before you finish, re-run the completion audit with this prompt (the nonce is new):',
+      'ADHD protocol reminder: the newest user turn above amends this task (show `Changed: <previous requirement> -> <corrected requirement>` when it changes a requirement; a bare question or answer needs no delta). Keep one NOW action. Before you finish, give your complete answer, then re-run the completion audit as the last action of the turn with this prompt (the nonce is new):',
       fence(auditor.prompt),
     );
     if (record.mode === 'hyperfocus') parts.push(`Hyperfocus is on: record claims and sources with ${evidenceCommand} (JSON on stdin) before finishing.`);
@@ -210,7 +214,7 @@ export function renderRestoreContext({ record, prefs, pluginRoot, dataRoot, sour
 
 export function renderRepairInstruction({ record, gaps, pluginRoot, dataRoot }) {
   return [
-    `[ADHD] REPAIR ${record.repair.completed} of ${record.repair.maximum} — contract v${record.contractVersion} (digest ${shortDigest(record.requestDigest)}) is NOT complete. Fix only the gaps below, declare any new deliverable files, then re-run the contract auditor with the new nonce and stop.`,
+    `[ADHD] REPAIR ${record.repair.completed} of ${record.repair.maximum} — contract v${record.contractVersion} (digest ${shortDigest(record.requestDigest)}) is NOT complete. Fix only the gaps below, declare any new deliverable files, restate your complete answer, then re-run the contract auditor with the new nonce as the last action and stop.`,
     'Gaps:',
     formatGaps(gaps),
     'Auditor invocation (Agent tool, subagent_type "adhd:contract-auditor"):',

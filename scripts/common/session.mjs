@@ -2,7 +2,7 @@ import path from 'node:path';
 import { randomTaskId, randomNonce, digestOf } from './ids.mjs';
 import { emptyEvidence, MAX_TOOL_EVENTS, MAX_REPAIRS, MODES, isOpenPhase } from './schema.mjs';
 import { transition, repairIndex } from './statemachine.mjs';
-import { MUTATING_TOOLS, redact } from './evidence.mjs';
+import { MUTATING_TOOLS, redact, isReadOnlyCommand } from './evidence.mjs';
 import { validateClaim, validateUnresolved, assessLedger } from './ledger.mjs';
 import { AdhdError } from './errors.mjs';
 
@@ -20,12 +20,14 @@ export function computeRequestDigest(record) {
   return digestOf({ original: record.originalRequest ? record.originalRequest.text : null, turns: record.userTurns.map((turn) => turn.text), mode: record.mode });
 }
 
+const changesState = (event) => MUTATING_TOOLS.has(event.toolName) && !(event.toolName === 'Bash' && isReadOnlyCommand(event.command));
+
 export function computeEvidenceDigest(record) {
   const evidence = record.evidence;
   return digestOf({
     artifacts: evidence.artifacts.map((artifact) => artifact.path),
-    commands: evidence.commands.map((command) => [command.toolUseId, command.exitStatus, command.ok]),
-    toolEvents: evidence.toolEvents.filter((event) => MUTATING_TOOLS.has(event.toolName)).map((event) => [event.toolUseId, event.ok, event.output.sha256]),
+    commands: evidence.commands.filter((command) => !isReadOnlyCommand(command.command)).map((command) => [command.toolUseId, command.exitStatus, command.ok]),
+    toolEvents: evidence.toolEvents.filter(changesState).map((event) => [event.toolUseId, event.ok, event.output.sha256]),
     claims: evidence.claims.map((claim) => [claim.claimId, claim.text, claim.confidence, claim.sources.map((source) => source.url)]),
     unresolved: evidence.unresolved.map((item) => item.question),
   });
@@ -112,7 +114,7 @@ export function recordToolEvent(record, event, at) {
     evidence.commands.push({ toolUseId: event.toolUseId, command: event.command, exitStatus: event.exitStatus, ok: event.ok, at: event.at });
     if (evidence.commands.length > MAX_TOOL_EVENTS) evidence.commands.splice(0, evidence.commands.length - MAX_TOOL_EVENTS);
   }
-  if (MUTATING_TOOLS.has(event.toolName) && record.audit.receipt && record.audit.invalidatedAt === null) record.audit.invalidatedAt = iso(at);
+  if (changesState(event) && record.audit.receipt && record.audit.invalidatedAt === null) record.audit.invalidatedAt = iso(at);
   return record;
 }
 

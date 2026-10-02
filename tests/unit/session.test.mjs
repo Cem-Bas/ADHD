@@ -52,6 +52,17 @@ test('receipts must bind to task, version, digest, and nonce', () => {
   assert.equal(recordAuditReceipt(other, passingReceipt(record), now).reason, 'TASK_MISMATCH');
 });
 
+test('read-only commands after an audit keep the receipt fresh; a mutating command still stales it', () => {
+  const record = fresh();
+  recordAuditReceipt(record, passingReceipt(record), now);
+  recordToolEvent(record, bashEvent('r1', 0, 'git status && cat README.md | head -5'), now);
+  recordToolEvent(record, bashEvent('r2', 1, 'grep -rn missing scripts'), now);
+  assert.deepEqual(auditFreshness(record), { fresh: true, reason: 'fresh' });
+  assert.equal(record.audit.invalidatedAt, null);
+  recordToolEvent(record, bashEvent('m1', 0, 'sed -i "" s/a/b/ README.md'), now);
+  assert.equal(auditFreshness(record).reason, 'evidence');
+});
+
 test('mutating tool events stale a receipt; Agent events and receipts themselves do not', () => {
   const record = fresh();
   recordAuditReceipt(record, passingReceipt(record), now);

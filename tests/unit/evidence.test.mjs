@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { redact, clipAndHash, extractPaths, extractUrls, extractExitStatus, summarizeToolEvent, MUTATING_TOOLS } from '../../scripts/common/evidence.mjs';
+import { redact, clipAndHash, extractPaths, extractUrls, extractExitStatus, summarizeToolEvent, MUTATING_TOOLS, isReadOnlyCommand } from '../../scripts/common/evidence.mjs';
 
 test('redact hides common secret shapes but keeps ordinary text', () => {
   const text = 'token=abcdef123456 AKIAABCDEFGHIJKLMNOP ghp_abcdefghijklmnopqrstuvwxyz0123 sk-ant-api03-abcdefghijklmnopqrstuvwxyz Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U plain words stay';
@@ -63,4 +63,13 @@ test('failure events keep a recoverable exit status, and Bearer redaction leaves
   assert.equal(redact('Authorization: Bearer abc.def.ghi').includes('abc.def.ghi'), false);
   assert.equal(redact('Bearer x1y2z3w4v5u6t7').includes('x1y2z3'), false);
   assert.equal(redact('Bearer bonds'), 'Bearer bonds');
+});
+
+test('isReadOnlyCommand accepts plain inspection commands and rejects anything that can change state', () => {
+  for (const command of ['git status', 'git --no-pager log --oneline -5', 'cat a.md | head -20', 'cd /p && grep -rn x scripts 2>&1 | wc -l', 'sed -n 1,40p f.mjs', 'find . -name "*.mjs"', 'ls -la >/dev/null', 'git diff --stat; git show HEAD']) {
+    assert.equal(isReadOnlyCommand(command), true, command);
+  }
+  for (const command of ['npm test', 'node -e "1"', 'sed -i "" s/a/b/ f', 'find . -delete', 'find . -exec rm {} ;', 'cat a > b', 'echo x >> f', 'git commit -m x', 'git -c x=y status', 'git diff --output=f', 'git push', 'ls $(pwd)', 'ls `pwd`', 'sort -o f f', 'cat a | tee b', 'rm -rf x', 'for f in *; do cat $f; done', '', null, 'cat '.padEnd(600, 'x')]) {
+    assert.equal(isReadOnlyCommand(command), false, String(command));
+  }
 });

@@ -4,6 +4,34 @@ import { MAX_TOOL_RESULT_BYTES } from './schema.mjs';
 export const CAPTURED_TOOLS = new Set(['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Agent', 'Task']);
 export const MUTATING_TOOLS = new Set(['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 
+const READ_ONLY_PROGRAMS = new Set(['cat', 'head', 'tail', 'grep', 'egrep', 'fgrep', 'rg', 'ls', 'wc', 'pwd', 'echo', 'printf', 'diff', 'stat', 'file', 'which', 'cd', 'true', 'uniq', 'cut', 'tr', 'jq', 'basename', 'dirname', 'realpath', 'sed', 'find', 'sort', 'git']);
+const READ_ONLY_GIT = new Set(['status', 'log', 'show', 'diff', 'rev-parse', 'ls-files', 'blame', 'grep']);
+const HARMLESS_REDIRECTS = /\s(?:2>&1|[12]?>\s*\/dev\/null)(?=\s|$)/g;
+
+function readOnlySegment(segment) {
+  const words = segment.trim().split(/\s+/);
+  const [program, ...args] = words;
+  if (!program) return true;
+  if (!READ_ONLY_PROGRAMS.has(program)) return false;
+  if (program === 'sed') return !args.some((arg) => /^-[a-zA-Z]*i/.test(arg) || arg.startsWith('--in-place'));
+  if (program === 'find') return !args.some((arg) => ['-delete', '-exec', '-execdir', '-ok', '-okdir', '-fprint', '-fprintf', '-fls'].includes(arg));
+  if (program === 'sort') return !args.some((arg) => arg.startsWith('-o') || arg.startsWith('--output'));
+  if (program === 'git') {
+    const at = args.findIndex((arg) => !arg.startsWith('-'));
+    return at >= 0 && args.slice(0, at).every((arg) => arg === '--no-pager') && READ_ONLY_GIT.has(args[at]) && !args.some((arg) => arg.startsWith('--output'));
+  }
+  return true;
+}
+
+// A command that only reads (cat, grep, git status, ...) cannot change what an audit verified,
+// so it must not make a recorded receipt stale. Anything unrecognised counts as mutating.
+export function isReadOnlyCommand(command) {
+  if (typeof command !== 'string' || command.trim() === '' || command.length >= 500) return false;
+  const text = ` ${command}`.replace(HARMLESS_REDIRECTS, ' ');
+  if (/[>`]|\$\(|<\(/.test(text)) return false;
+  return text.split(/&&|\|\||[;|\n]/).every(readOnlySegment);
+}
+
 const SECRET_PATTERNS = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
