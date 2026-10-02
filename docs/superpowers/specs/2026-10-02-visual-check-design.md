@@ -118,3 +118,11 @@ Pixel-diff regression against earlier runs; a `/adhd:visualize` command; browser
 ## Known interaction
 
 Recorded command `exitStatus` is currently `null` (observed 2026-10-02); `ok` is populated and is what `visual-record` and the gaps use. Fixing `exitStatus` capture is a separate task.
+
+## Implementation refinements (2026-10-02, from code inspection)
+
+- **Pass/fail source.** Claude Code's Bash results carry no exit code, so a recorded command's `ok` is not a reliable pass signal. The script writes `<check dir>/result.json` as `{"passed": bool, "url": string, "screenshots": [abs paths], "failures": [string]}`; a blocked run writes `{"passed": false, "blocked": "PLAYWRIGHT_MISSING: …" | "BROWSER_LAUNCH_FAILED: …" | "APP_UNREACHABLE: …"}`. A check is ok only when `result.passed === true` and the command is recorded ok.
+- **Finding the run.** Claude cannot see tool-use ids, so `visual-record` takes `{"resultFile": "<path>"}` and links the latest recorded Bash command whose text contains `<check dir>/check.mjs`. The script must be saved as `check.mjs` in the check directory and run with `node "<check dir>/check.mjs"`.
+- **Blocked gap.** A latest check with `blocked` set yields `VISUAL_BLOCKED`, which pauses the task like `ITEM_BLOCKED`.
+- **Browser fallback (user decision 2026-10-02).** When the project has no Playwright but Claude Code's own browser tools are available (Claude in Chrome, Playwright MCP), Claude drives the browser itself, saves the PNG screenshots into the check directory, and writes `result.json` with `"method": "browser"`. Such a check needs no script run (`toolUseId: null`); its pass/fail is the worker's own statement, so the auditor's screenshot review is the deciding evidence. The task pauses only when neither the script nor the browser tools can run.
+- **Recorded answers (loop-bug fix).** A reply written just before a tool call can be stored in the transcript only as a short summary, so the auditor missed answers that were given. Claude records each complete answer with `state.mjs answer-record` (`{"answer": "<text>"}`), stored in `evidence.answers` (20 entries, 20 000 characters each), and the auditor reads it before the transcript. The protocol also tells Claude to put content the user must read or approve in the final message of the turn or in question option previews.
