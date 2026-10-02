@@ -5,6 +5,14 @@ import { PREFERENCE_DEFINITIONS } from './prefs.mjs';
 
 export const BOUNDED_REPORT_HEADING = 'ADHD BOUNDED STOP REPORT';
 export const BOUNDED_REPORT_SECTIONS = ['Unresolved items', 'Evidence gathered', 'Exact blocker', 'Smallest next action'];
+export const WAITING_MARKER = 'WAITING ON YOU';
+const WAITING_RE = /^[\s>*_#-]*WAITING ON YOU\s*[*_]*\s*:\s*[*_]*\s*\S/im;
+const WAITING_RULE = `When you cannot continue without the user's answer or approval, end the reply with the line \`${WAITING_MARKER}: <your single question>\` and stop: the plugin pauses the task without an audit, and the user's next message resumes it. Use it only for a genuine question, never to skip an audit of finished work.`;
+
+export function waitingOnUser(text) {
+  return WAITING_RE.test(String(text || ''));
+}
+
 export const DEGRADED_REPORT_HEADING = 'ADHD DEGRADED STOP REPORT';
 export const DEGRADED_REPORT_SECTIONS = ['Verification failure', 'Work completed without verification', 'Smallest next action'];
 const LEDGER_CHAR_BUDGET = 12000;
@@ -161,6 +169,7 @@ export function renderTaskLockProtocol({ record, prefs, pluginRoot, dataRoot, fu
       '5. BOUNDARIES. Before refusing or redirecting any part of the request, identify the smallest exact action under review and answer in this form, then continue the unaffected work:',
       BOUNDARY_TEMPLATE,
       'Never invent a policy, claim illegality without support, moralize, or silently answer a different question. Genuine restrictions remain binding.',
+      WAITING_RULE,
       '6. EVIDENCE. Declare each deliverable file when it is finished so the completion check can verify that it exists (JSON on stdin):',
       `${artifactCommand}   <<< {"artifacts":[{"path":"<relative or absolute path>","purpose":"<what it is>"}]}`,
       '7. COMPLETION AUDIT (required before you finish). First give the user your complete answer, then invoke the adhd:contract-auditor subagent with the Agent tool as the last action of the turn — subagent_type "adhd:contract-auditor" — using this prompt verbatim:',
@@ -181,6 +190,7 @@ export function renderTaskLockProtocol({ record, prefs, pluginRoot, dataRoot, fu
       '',
       'ADHD protocol reminder: the newest user turn above amends this task (show `Changed: <previous requirement> -> <corrected requirement>` when it changes a requirement; a bare question or answer needs no delta). Keep one NOW action. Before you finish, give your complete answer, then re-run the completion audit as the last action of the turn with this prompt (the nonce is new):',
       fence(auditor.prompt),
+      WAITING_RULE,
     );
     if (record.mode === 'hyperfocus') parts.push(`Hyperfocus is on: record claims and sources with ${evidenceCommand} (JSON on stdin) before finishing.`);
   }
@@ -219,7 +229,8 @@ export function renderRepairInstruction({ record, gaps, pluginRoot, dataRoot }) 
     formatGaps(gaps),
     'Auditor invocation (Agent tool, subagent_type "adhd:contract-auditor"):',
     fence(auditorInvocation({ record, pluginRoot, dataRoot }).prompt),
-    'Do not claim completion until every item is PASS. If a gap depends on a fact only the user can supply, have the auditor mark that item BLOCKED and ask the user your single question; the plugin pauses the task when every remaining gap is BLOCKED, and a reply from the user restarts the repair budget.',
+    'Do not claim completion until every item is PASS. If a gap depends on a fact only the user can supply, ask the user that single question instead of re-running the auditor; a reply from the user restarts the repair budget.',
+    WAITING_RULE,
   ].join('\n');
 }
 

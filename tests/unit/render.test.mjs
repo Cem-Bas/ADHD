@@ -4,7 +4,7 @@ import path from 'node:path';
 import { newSessionRecord } from '../../scripts/common/schema.mjs';
 import { startTask, appendUserTurn, setMode, recordAuditReceipt } from '../../scripts/common/session.mjs';
 import { defaultPreferences } from '../../scripts/common/prefs.mjs';
-import { renderTaskLockProtocol, renderRestoreContext, renderRepairInstruction, renderBoundedReportInstruction, boundedReportPresent, degradedReportPresent, stateCommand, renderLedger, statusSummary, renderControlContext, BOUNDED_REPORT_HEADING } from '../../scripts/common/render.mjs';
+import { renderTaskLockProtocol, renderRestoreContext, renderRepairInstruction, renderBoundedReportInstruction, boundedReportPresent, degradedReportPresent, waitingOnUser, stateCommand, renderLedger, statusSummary, renderControlContext, BOUNDED_REPORT_HEADING } from '../../scripts/common/render.mjs';
 import { passingReceipt } from '../helpers.mjs';
 
 const now = Date.parse('2026-09-27T10:00:00Z');
@@ -48,6 +48,19 @@ test('the protocol orders answer before audit and the auditor grades the substan
   assert.ok(repair.includes('does not retract it'));
 });
 
+test('every protocol variant explains WAITING ON YOU, and the detector needs the marker at the start of a line', () => {
+  const record = make();
+  for (const text of [renderTaskLockProtocol({ record, ...ctx, full: true }), renderTaskLockProtocol({ record, ...ctx, full: false }), renderRepairInstruction({ record, gaps: [{ code: 'AUDIT_MISSING', detail: 'x' }], ...ctx })]) {
+    assert.ok(text.includes('`WAITING ON YOU: <your single question>`'));
+  }
+  assert.equal(waitingOnUser('Searched.\nWAITING ON YOU: what is JEv?'), true);
+  assert.equal(waitingOnUser('> **WAITING ON YOU**: which file?'), true);
+  assert.equal(waitingOnUser('- WAITING ON YOU: approve the push?'), true);
+  assert.equal(waitingOnUser('I am WAITING ON YOU: no'), false);
+  assert.equal(waitingOnUser('WAITING ON YOU:'), false);
+  assert.equal(waitingOnUser(''), false);
+});
+
 test('short protocol omits the Task Lock template but keeps the auditor prompt; machine turns are labelled', () => {
   const record = make();
   appendUserTurn(record, { text: 'also docs', receivedAt: now + 1 });
@@ -86,7 +99,7 @@ test('repair and bounded-report instructions list gaps and the report detectors 
   assert.ok(repair.startsWith('[ADHD] REPAIR 2 of 6'));
   assert.ok(repair.includes('1. [ITEM_PARTIAL] R2 "tests" — no tests for x'));
   assert.ok(repair.includes(record.audit.nonce));
-  assert.ok(repair.includes('have the auditor mark that item BLOCKED and ask the user your single question; the plugin pauses the task when every remaining gap is BLOCKED, and a reply from the user restarts the repair budget.'));
+  assert.ok(repair.includes('ask the user that single question instead of re-running the auditor; a reply from the user restarts the repair budget.'));
   assert.equal(repair.includes('pauses the task instead of repairing'), false);
   const bounded = renderBoundedReportInstruction({ record, gaps });
   assert.ok(bounded.includes(BOUNDED_REPORT_HEADING));

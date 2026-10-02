@@ -8,7 +8,7 @@ import { transition, nextPhaseAfterFailedEvaluation, MAX_CONSECUTIVE_BLOCKS } fr
 import { evaluateStop, invalidateAudit, receiptCoverage, createDegradedTask } from './common/session.mjs';
 import { readLastAssistantText } from './common/transcript.mjs';
 import { appendDiagnostic } from './common/diagnostics.mjs';
-import { renderRepairInstruction, renderBoundedReportInstruction, renderDegradedReportInstruction, boundedReportPresent, degradedReportPresent } from './common/render.mjs';
+import { renderRepairInstruction, renderBoundedReportInstruction, renderDegradedReportInstruction, boundedReportPresent, degradedReportPresent, waitingOnUser } from './common/render.mjs';
 
 function lastMessage(input, record) {
   if (typeof input.last_assistant_message === 'string' && input.last_assistant_message !== '') return input.last_assistant_message;
@@ -48,6 +48,9 @@ function decide(record, { input, now, pluginRoot, dataRoot }) {
     transition(record, 'COMPLETE', { now });
     const coverage = receiptCoverage(record);
     return { result: { systemMessage: `ADHD: contract verified — COMPLETE (${coverage.passed}/${coverage.total} items PASS, ${record.repair.completed} repair(s)).` } };
+  }
+  if (waitingOnUser(lastMessage(input, record))) {
+    return { result: { systemMessage: `ADHD: task ${record.taskId} paused — waiting on your answer; NOT complete. The task resumes with your next message.` } };
   }
   if (evaluation.gaps.every((gap) => gap.code === 'ITEM_BLOCKED')) {
     record.repair.gaps = evaluation.gaps;

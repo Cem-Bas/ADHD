@@ -232,6 +232,22 @@ test('items BLOCKED on the user pause the task without advancing repair state', 
   assert.equal(record.repair.gaps[0].code, 'ITEM_BLOCKED');
 });
 
+test('a reply that ends WAITING ON YOU pauses without an audit, a block, or a repair; a plain mention does not', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  begin(root, cwd, 'list me what JEv does');
+  for (const message of ['I could not find JEv.\n\nWAITING ON YOU: What is JEv — a file, a tool, or a typo?', 'No match.\n**WAITING ON YOU:** Which repo is JEv in?']) {
+    const paused = runHook('stop', root, stopInput({ cwd, lastAssistantMessage: message })).json;
+    assert.equal(paused.decision, undefined);
+    assert.match(paused.systemMessage, /paused — waiting on your answer; NOT complete/);
+    const record = readSession(root, 'sess-test-1');
+    assert.deepEqual([record.phase, record.repair.completed, record.repair.blocksIssued, record.audit.receipt], ['ACTIVE', 0, 0, null]);
+  }
+  const blocked = runHook('stop', root, stopInput({ cwd, lastAssistantMessage: 'Done. I am not waiting on you: everything is finished.' })).json;
+  assert.equal(blocked.decision, 'block');
+  assert.match(blocked.reason, /AUDIT_MISSING/);
+});
+
 test('hyperfocus tasks need a ledger that meets the support rules', () => {
   const root = tmpDataRoot();
   const cwd = tmpProjectDir();
