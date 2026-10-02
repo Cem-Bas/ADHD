@@ -1,6 +1,6 @@
 {
   "name": "adhd",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Keeps Claude Code anchored to your actual request: visible Task Lock, Done/Now/Next/Blocked progress, Hyperfocus deep-research mode, precise boundary explanations, and a nonce-bound completion audit with bounded automatic repair.",
   "author": {
     "name": "Cem Bas"
