@@ -43,6 +43,7 @@ export function dataPaths(root) {
     sessions: path.join(root, 'sessions'),
     exports: path.join(root, 'exports'),
     diagnostics: path.join(root, 'diagnostics'),
+    visual: path.join(root, 'visual'),
   };
 }
 
@@ -58,6 +59,11 @@ export function assertInside(root, target) {
 
 export function sessionFile(root, sessionId) {
   return assertInside(root, path.join(root, 'sessions', `${validateSessionId(sessionId)}.json`));
+}
+
+export function visualDir(root, sessionId, taskId) {
+  if (!TASK_ID_RE.test(String(taskId))) throw new AdhdError('INVALID_TASK_ID', 'task id must be 1-32 lowercase alphanumerics');
+  return assertInside(root, path.join(root, 'visual', validateSessionId(sessionId), taskId));
 }
 
 export function archivedTaskFile(root, sessionId, taskId) {

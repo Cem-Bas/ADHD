@@ -2,12 +2,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs, readStdin, parseJson, writeStdoutJson } from './common/io.mjs';
-import { resolveDataRoot, validateSessionId, normalizeCwd, dataPaths, diagnosticsFile, projectKey } from './common/paths.mjs';
+import { resolveDataRoot, validateSessionId, normalizeCwd, dataPaths, diagnosticsFile, projectKey, visualDir } from './common/paths.mjs';
 import { loadSession, mutateSession, archiveTask, listSessionRecords, findOpenSessionsForCwd } from './common/store.mjs';
 import { startTask, setMode, cancelTask, closeReplaced, declareArtifacts, addResearchEvidence, recordAuditReceipt, evaluateStop, recordAnswer } from './common/session.mjs';
 import { isOpenPhase, MODES } from './common/schema.mjs';
 import { loadPreferences, setPreference, unsetPreference, resetPreferences, PREFERENCE_DEFINITIONS } from './common/prefs.mjs';
 import { cleanupExpired } from './common/retention.mjs';
+import { recordVisualDecision, recordVisualCheck, visualGaps, CHECK_SCRIPT, RESULT_FILE } from './common/visual.mjs';
 import { assessLedger } from './common/ledger.mjs';
 import { statusSummary } from './common/render.mjs';
 import { fileExists, listFiles, removeQuietly, writeFileAtomic, ensureDir, readJsonFile } from './common/fsx.mjs';
@@ -124,6 +125,8 @@ function dataDeleteSession(root, sessionId) {
   }
   const diag = diagnosticsFile(root, sessionId);
   if (fileExists(diag) && removeQuietly(diag)) deleted.push(diag);
+  const visual = path.join(paths.visual, sessionId);
+  if (fileExists(visual) && removeQuietly(visual)) deleted.push(visual);
   return { ok: true, deleted };
 }
 
@@ -159,7 +162,7 @@ function dataDeleteProject(root, flags) {
 
 function dataDeleteAll(root, flags) {
   const paths = dataPaths(root);
-  const targets = [paths.preferences, paths.projects, paths.sessions, paths.exports, paths.diagnostics].filter(fileExists);
+  const targets = [paths.preferences, paths.projects, paths.sessions, paths.exports, paths.diagnostics, paths.visual].filter(fileExists);
   const preview = confirmOrPreview(flags, 'delete all adhd data', { targets });
   if (preview) return preview;
   return { ok: true, deleted: targets.filter((target) => removeQuietly(target)) };
@@ -212,6 +215,30 @@ const commands = {
     return mutateOpen(root, sessionId, now, (record) => {
       recordAnswer(record, payload && payload.answer, now);
       return { result: { ok: true, contractVersion: record.contractVersion, answers: record.evidence.answers.length } };
+    });
+  },
+  async 'visual-decide'({ root, flags, now }) {
+    const sessionId = resolveSessionId(root, flags);
+    const payload = await readStdinJson();
+    return mutateOpen(root, sessionId, now, (record) => {
+      recordVisualDecision(record, payload, now);
+      return { result: { ok: true, decision: record.evidence.visual.decision } };
+    });
+  },
+  'visual-dir'({ root, flags }) {
+    const sessionId = resolveSessionId(root, flags);
+    const record = requireRecord(root, sessionId);
+    if (!record.taskId || !isOpenPhase(record.phase)) fail('NO_ACTIVE_TASK', `task phase is ${record.phase}`);
+    const dir = visualDir(root, sessionId, record.taskId);
+    ensureDir(dir);
+    return { dir, script: path.join(dir, CHECK_SCRIPT), resultFile: path.join(dir, RESULT_FILE) };
+  },
+  async 'visual-record'({ root, flags, now }) {
+    const sessionId = resolveSessionId(root, flags);
+    const payload = await readStdinJson();
+    return mutateOpen(root, sessionId, now, (record) => {
+      const check = recordVisualCheck(record, payload, { at: now, fileExists, readJson: readJsonFile });
+      return { result: { ok: true, check, gaps: visualGaps(record, { fileExists }) } };
     });
   },
   cancel({ root, flags, now }) {

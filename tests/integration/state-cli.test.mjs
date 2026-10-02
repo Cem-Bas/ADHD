@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { tmpDataRoot, tmpProjectDir, runHook, runState, promptInput, readSession, passingReceipt } from '../helpers.mjs';
+import { tmpDataRoot, tmpProjectDir, runHook, runState, promptInput, toolInput, readSession, passingReceipt } from '../helpers.mjs';
 
 test('usage errors are JSON with exit code 1', () => {
   const root = tmpDataRoot();
@@ -153,4 +153,37 @@ test('answer-record stores the answer for the open task and rejects empty input'
   assert.equal(readSession(root, 'sess-test-1').evidence.answers[0].text, "No: it can't give an exit code.");
   const empty = runState(root, 'answer-record', { args: ['--session', 'sess-test-1'], input: { answer: '' } });
   assert.deepEqual([empty.status, empty.json.error.code], [1, 'INVALID_ANSWER']);
+});
+
+test('visual-dir, visual-decide, and visual-record work end to end; visual-record finds the run by the check script path and rejects when no run exists', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  runHook('prompt', root, promptInput({ prompt: 'build a signup page', cwd }));
+  const where = runState(root, 'visual-dir', { args: ['--session', 'sess-test-1'] }).json;
+  assert.ok(fs.statSync(where.dir).isDirectory());
+  assert.equal(where.script, path.join(where.dir, 'check.mjs'));
+  assert.equal(where.resultFile, path.join(where.dir, 'result.json'));
+  const decided = runState(root, 'visual-decide', { args: ['--session', 'sess-test-1'], input: { needed: true, reason: 'new /signup page' } }).json;
+  assert.deepEqual([decided.ok, decided.decision.needed], [true, true]);
+  const shots = ['desktop.png', 'phone.png'].map((name) => path.join(where.dir, name));
+  for (const shot of shots) fs.writeFileSync(shot, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  fs.writeFileSync(where.resultFile, JSON.stringify({ passed: true, url: 'http://localhost:5173/signup', screenshots: shots, failures: [] }));
+  const early = runState(root, 'visual-record', { args: ['--session', 'sess-test-1'], input: { resultFile: where.resultFile } });
+  assert.deepEqual([early.status, early.json.error.code], [1, 'INVALID_VISUAL']);
+  runHook('evidence', root, toolInput({ cwd, toolUseId: 'toolu_check', toolInputValue: { command: `node "${where.script}"` } }));
+  const recorded = runState(root, 'visual-record', { args: ['--session', 'sess-test-1'], input: { resultFile: where.resultFile } }).json;
+  assert.deepEqual([recorded.ok, recorded.check.ok, recorded.check.toolUseId, recorded.gaps], [true, true, 'toolu_check', []]);
+  const bad = runState(root, 'visual-decide', { args: ['--session', 'sess-test-1'], input: { needed: 'maybe', reason: 'x' } });
+  assert.deepEqual([bad.status, bad.json.error.code], [1, 'INVALID_VISUAL']);
+});
+
+test('data delete-session removes the session visual folder', () => {
+  const root = tmpDataRoot();
+  const cwd = tmpProjectDir();
+  runHook('prompt', root, promptInput({ prompt: 'ui work', cwd }));
+  const { dir } = runState(root, 'visual-dir', { args: ['--session', 'sess-test-1'] }).json;
+  fs.writeFileSync(path.join(dir, 'a.png'), 'x');
+  const deleted = runState(root, 'data', { args: ['delete-session', '--session', 'sess-test-1'] }).json;
+  assert.ok(deleted.deleted.includes(path.join(root, 'visual', 'sess-test-1')));
+  assert.equal(fs.existsSync(path.join(root, 'visual', 'sess-test-1')), false);
 });

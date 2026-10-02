@@ -26,7 +26,10 @@ export function cleanupExpired(root, { now = Date.now() } = {}) {
       const expired = Date.parse(record.expiresAt) <= now;
       const abandoned = !archived && isOpenPhase(record.phase) && now - Date.parse(record.updatedAt) > ABANDONED_OPEN_DAYS * 86_400_000;
       if ((expired && (archived || isTerminalPhase(record.phase) || record.phase === 'IDLE')) || abandoned) {
-        if (removeQuietly(full)) result[archived ? 'removedArchives' : 'removedSessions'] += 1;
+        if (removeQuietly(full)) {
+          result[archived ? 'removedArchives' : 'removedSessions'] += 1;
+          if (!archived && typeof record.sessionId === 'string') removeQuietly(path.join(paths.visual, path.basename(record.sessionId)));
+        }
       }
     } else if (name.includes('.tmp-')) {
       try {
